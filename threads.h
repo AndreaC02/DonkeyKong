@@ -23,15 +23,6 @@ typedef enum GameState {
    GAMEOVER
 } GameState;
 
-typedef enum Direction {
-   STILL,
-   LEFT,
-   RIGHT,
-   UP,
-   DOWN
-} Direction;
-
-
 typedef enum {
    FLAT,
    SLOPE_RIGHT_DOWN,
@@ -87,11 +78,8 @@ semaphore_t sem_PCA9555_Debounce;
 /*******************************Background Threads**********************************/
 
 void Idle_Thread(void);
-//void Cube_Thread(void);
 void MarioMove_Thread(void);
 void Read_Buttons(void);
-//void Read_JoystickPress(void);
-//void Use_Matrix(void);
 
 /*******************************Background Threads**********************************/
 
@@ -100,14 +88,12 @@ void Read_Buttons(void);
 void Get_Joystick(void);
 void Draw_Screen(void);
 void Generate_Barrel(void);
-//void Check_Collision(void);
 
 /********************************Periodic Threads***********************************/
 
 /*******************************Aperiodic Threads***********************************/
 
 void GPIOE_Handler(void);
-//void GPIOD_Handler(void);
 
 /*******************************Aperiodic Threads***********************************/
 

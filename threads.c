@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <time.h>
 /*********************************Global Variables**********************************/
-GameState currentState = GAMEPLAY; // START
+GameState currentState = START; // START
 uint32_t score = 0;
 uint32_t high_score = 0;
 uint8_t lives = 3;
@@ -23,8 +23,8 @@ bool win = 0;
 uint8_t SLOPE_ADJUST = 50;
 uint8_t MOVE_PIXELS = 5;
 uint8_t MOVE_BARRELS = 1;
-uint8_t JUMP_PIXELS = 2;
-uint8_t MAX_JUMP_HEIGHT = 8;
+uint8_t JUMP_PIXELS = 8;
+uint8_t MAX_JUMP_HEIGHT = 6;
 
 uint16_t start_string_x = 107;
 uint16_t gameover_string_x = 115;
@@ -36,10 +36,9 @@ int16_t mario_y = 20;
 int16_t mario_w = 5;
 int16_t mario_h = 8;
 uint8_t mario_up = 0;
-uint8_t mario_down = 0;
 uint8_t mario_platform = 0;
-Direction mario_dir = STILL;
 bool on_ladder = false;
+bool jump = 0;
 
 // Donkey Kong coords
 int16_t dk_x = 15;
@@ -75,33 +74,33 @@ Platform platforms[] = {
 Ladder ladders[] = {
     // Ground floor ladders
     {60, 20, 55, 12, 8, true, ST7789_YELLOW},
-    {X_MAX - 80, 20, 55, 12, 8, false, ST7789_YELLOW},
+    {X_MAX - 80, 20, 55, 10, 8, false, ST7789_YELLOW},
 
     // Second level ladders
-    //{X_MAX-120, 50, 80, 10, 8, false, ST7789_YELLOW},
-    //{60, 50, 80, 10, 8, true, ST7789_YELLOW},
+    //{90, 50, 80, 10, 8, false, ST7789_YELLOW},
+    {X_MAX-120, 50, 173, 12, 8, false, ST7789_YELLOW}, //82
 
     // Third level ladders
-    //{60, 80, 110, 10, 8, false, ST7789_YELLOW},
-    //{X_MAX-80, 80, 110, 10, 8, true, ST7789_YELLOW},
+    {60, 75, 110, 12, 8, false, ST7789_YELLOW},
+    ////{X_MAX-80, 80, 110, 12, 8, true, ST7789_YELLOW},
 
     // Fourth level ladders
-    //{X_MAX-120, 110, 140, 10, 8, false, ST7789_YELLOW},
-    //{60, 110, 140, 10, 8, true, ST7789_YELLOW},
+    //{70, 110, 140, 12, 8, true, ST7789_YELLOW},
+    //{X_MAX-120, 110, 140, 12, 8, false, ST7789_YELLOW},
 
     // Fifth level ladders
-    //{60, 140, 170, 10, 8, false, ST7789_YELLOW},
-    //{X_MAX-80, 140, 170, 10, 8, false, ST7789_YELLOW},
+    //{100, 140, 170, 12, 8, false, ST7789_YELLOW},
+    ////{X_MAX-80, 140, 170, 12, 8, true, ST7789_YELLOW},
 
     // Two ladders from DK platform to princess platform
-    {70, 170, 200, 10, 8, false, ST7789_YELLOW}, // Left ladder next to DK
+    //{70, 170, 200, 10, 8, false, ST7789_YELLOW}, // Left ladder next to DK
     {90, 170, 200, 10, 8, false, ST7789_YELLOW}  // Right ladder next to DK
 };
 
 #define NUM_PLATFORMS (sizeof(platforms) / sizeof(Platform))
 #define NUM_LADDERS (sizeof(ladders) / sizeof(Ladder))
 
-#define MAX_BARRELS 1 // 4
+#define MAX_BARRELS 4 // 4
 #define BARREL_SIZE 5 // width and height of barrel
 Barrel barrels[MAX_BARRELS];
 uint8_t active_barrel_count = 0;
@@ -364,81 +363,88 @@ void clearBarrels()
    }
 }
 
-//!!!!!!!!!!! MAKE THIS CLEANER !!!!!!!!!!!!!!
 bool checkCollision()
 {
-   // UARTprintf("CHECK COLLISION");
-   if (currentState == GAMEPLAY)
+   if (currentState != GAMEPLAY)
    {
-      // UARTprintf("CHECK COLLISION\n");
-      for (int i = 0; i < MAX_BARRELS; i++)
-      {
-         if (barrels[i].active == 1)
-         {
-            // check every pixel in mario
-            for (int x = mario_x; x < mario_x + mario_w; x++)
-            {
-               for (int y = mario_y; y < mario_y + mario_h; y++)
-               {
-                  // check every pixel of barrel
-                  for (int a = barrels[i].x; a < barrels[i].x + BARREL_SIZE; a++)
-                  {
-                     for (int b = barrels[i].y; b < barrels[i].y + BARREL_SIZE; b++)
-                     {
-                        if (a == x && b == y)
-                        {
-                           // UARTprintf("COLLISION DETECTED\n");
-                           //  Collision detected
-                           return true;
-                        }
-                     }
-                  }
-               }
-            }
-         }
-      }
       return false;
    }
+
+   // Rectangle collision bounds for Mario (calculate once)
+   int16_t mario_left = mario_x;
+   int16_t mario_right = mario_x + mario_w;
+   int16_t mario_top = mario_y + mario_h;
+   int16_t mario_bottom = mario_y;
+
+   // Check collision with each active barrel
+   for (int i = 0; i < MAX_BARRELS; i++)
+   {
+      if (!barrels[i].active)
+      {
+         continue;
+      }
+
+      // Rectangle collision bounds for current barrel
+      int16_t barrel_left = barrels[i].x;
+      int16_t barrel_right = barrels[i].x + BARREL_SIZE;
+      int16_t barrel_top = barrels[i].y + BARREL_SIZE; // Adding size because y increases downward
+      int16_t barrel_bottom = barrels[i].y;
+
+      // First check if rectangles do NOT overlap
+      if (mario_right < barrel_left || // Mario is completely to left of barrel
+          mario_left > barrel_right || // Mario is completely to right of barrel
+          mario_bottom > barrel_top || // Mario is completely below barrel
+          mario_top < barrel_bottom)
+      {            // Mario is completely above barrel
+         continue; // No collision with this barrel, check next one
+      }
+
+      return true;
+   }
+
    return false;
 }
 
-int16_t getPlatformYAtX(const Platform* platform, int16_t x) {
-    // First check if x is within platform bounds
-    if(x < platform->x || x > platform->x + platform->width) {
-        return -1;  // Return -1 if x is outside platform bounds
-    }
-    
-    // For flat platforms, just return the y value plus height
-    if(platform->type == FLAT) {
-        return platform->y + platform->height;
-    }
-    
-    // For sloped platforms, calculate y based on progress along platform
-    float progress = (float)(x - platform->x) / platform->width;
-    
-    // Calculate y based on platform type and slope
-    if(platform->type == SLOPE_LEFT_DOWN) {
-        // Platform slopes down as x increases
-        return (platform->y - (progress * platform->slope * platform->width / 100)) + platform->height;
-    } else { // SLOPE_RIGHT_DOWN
-        // Platform slopes up as x increases
-        return (platform->y + (progress * platform->slope * platform->width / 100)) + platform->height;
-    }
+int16_t getPlatformYAtX(const Platform *platform, int16_t x)
+{
+   // First check if x is within platform bounds
+   if (x < platform->x || x > platform->x + platform->width)
+   {
+      return -1; // Return -1 if x is outside platform bounds
+   }
+
+   // For flat platforms, just return the y value plus height
+   if (platform->type == FLAT)
+   {
+      return platform->y + platform->height;
+   }
+
+   // For sloped platforms, calculate y based on progress along platform
+   float progress = (float)(x - platform->x) / platform->width;
+
+   // Calculate y based on platform type and slope
+   if (platform->type == SLOPE_LEFT_DOWN)
+   {
+      // Platform slopes down as x increases
+      return (platform->y - (progress * platform->slope * platform->width / 100)) + platform->height;
+   }
+   else
+   { // SLOPE_RIGHT_DOWN
+      // Platform slopes up as x increases
+      return (platform->y + (progress * platform->slope * platform->width / 100)) + platform->height;
+   }
 }
 
 bool isOnPlatform(int16_t x, int16_t y, int8_t *platform_index)
 {
-   const int16_t PLATFORM_TOLERANCE = 2; // Allow for slight variance
+   const int16_t PLATFORM_TOLERANCE = 2;
 
    for (int i = 0; i < NUM_PLATFORMS; i++)
    {
-      // First check x bounds
       if (x >= platforms[i].x && x <= platforms[i].x + platforms[i].width)
       {
-         // Get platform y at this x
          int16_t platform_y = getPlatformYAtX(&platforms[i], x);
 
-         // Check if y is at platform height (within tolerance)
          if (abs(y - platform_y) <= PLATFORM_TOLERANCE)
          {
             if (platform_index != NULL)
@@ -458,248 +464,8 @@ bool isOnPlatform(int16_t x, int16_t y, int8_t *platform_index)
 
 void Idle_Thread(void)
 {
-   while (1)
-      ;
+   while (1);
 }
-
-/*
-void MarioMove_Thread(void) {
-    volatile uint32_t joystick_vals;
-    volatile uint16_t js_x, js_y;
-    int16_t old_mario_x, old_mario_y;
-
-    while(1) {
-        if(currentState == GAMEPLAY) {
-            old_mario_x = mario_x;
-            old_mario_y = mario_y;
-
-            // Get result from joystick
-            joystick_vals = G8RTOS_ReadFIFO(JOYSTICK_FIFO);
-            js_x = joystick_vals >> 16;
-            js_y = joystick_vals & 0xFFFF;
-
-            // If joystick axis within deadzone, set to 0. Otherwise normalize it.
-            float js_x_add = ((2.0F*(float)(js_x)) / 4096.0F) - 1.0F;
-            float js_y_add = ((2.0F*(float)(js_y)) / 4096.0F) - 1.0F;
-
-            // If joystick axis within deadzone, set to 0.
-            if(js_x_add < 0.35 && js_x_add > -0.35) {
-                js_x_add = 0;
-                mario_dir = STILL;
-            } else if(js_x_add > 0) {
-                mario_dir = RIGHT;
-            } else if(js_x_add < 0) {
-                mario_dir = LEFT;
-            }
-
-            // First check for ladder movement
-            on_ladder = false;
-            for(int i = 0; i < NUM_LADDERS; i++) {
-                if(mario_x >= ladders[i].x - mario_w/2 &&
-                   mario_x <= ladders[i].x + ladders[i].width - mario_w/2) {
-                    if(mario_y >= ladders[i].y_top && mario_y <= ladders[i].y_bottom) {
-                        if(js_y_add > 0.35 || js_y_add < -0.35) {  // Only engage ladder if trying to move vertically
-                            on_ladder = true;
-                            // Move vertically on ladder
-                            if(js_y_add > 0.35 && mario_y < ladders[i].y_bottom) {
-                                mario_y++;
-                            } else if(js_y_add < -0.35 && mario_y > ladders[i].y_top) {
-                                mario_y--;
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Handle platform movement if not on ladder
-            if(!on_ladder) {
-                if(mario_platform == 0 || mario_platform == 6 || mario_platform == 7) {
-                    // Flat platforms - simple horizontal movement
-                    int16_t new_x = mario_x - (js_x_add * MOVE_PIXELS);
-
-                    // Check if new position would still be on platform
-                    if(new_x >= platforms[mario_platform].x &&
-                       new_x + mario_w <= platforms[mario_platform].x + platforms[mario_platform].width) {
-                        mario_x = new_x;
-                    }
-                }
-                else if(mario_platform > 0 && mario_platform < NUM_PLATFORMS - 1) {
-                    // Sloped platforms
-                    int16_t new_x = mario_x - (js_x_add * MOVE_PIXELS);
-
-                    if(new_x >= platforms[mario_platform].x &&
-                       new_x + mario_w <= platforms[mario_platform].x + platforms[mario_platform].width) {
-                        mario_x = new_x;
-
-                        // Handle slope movement
-                        if(platforms[mario_platform].type == SLOPE_LEFT_DOWN) {
-                            if(mario_dir == RIGHT) {
-                                mario_y++;
-                            } else if(mario_dir == LEFT) {
-                                mario_y--;
-                            }
-                        }
-                        else if(platforms[mario_platform].type == SLOPE_RIGHT_DOWN) {
-                            if(mario_dir == RIGHT) {
-                                mario_y--;
-                            } else if(mario_dir == LEFT) {
-                                mario_y++;
-                            }
-                        }
-                    }
-                }
-
-                // Update platform tracking
-                bool on_platform = false;
-                for(int i = 0; i < NUM_PLATFORMS; i++) {
-                    if(platforms[i].type == FLAT) {
-                        if(mario_y == platforms[i].y &&
-                           mario_x >= platforms[i].x &&
-                           mario_x + mario_w <= platforms[i].x + platforms[i].width) {
-                            mario_platform = i;
-                            on_platform = true;
-                            break;
-                        }
-                    }
-                }
-
-                // Handle falling if not on platform and not on ladder
-                if(!on_platform && !on_ladder) {
-                    mario_y++;
-                }
-            }
-
-            // Check for collisions with barrels
-            if(checkCollision()) {
-                // Clear lives display
-                G8RTOS_WaitSemaphore(&sem_SPIA);
-                ST7789_WriteScore(7 * 10 + 10, 32, lives, ST7789_BLACK);
-                G8RTOS_SignalSemaphore(&sem_SPIA);
-
-                lives--;
-
-                // Erase Mario
-                G8RTOS_WaitSemaphore(&sem_SPIA);
-                ST7789_DrawRectangle(mario_x, mario_y, mario_w, mario_h, ST7789_BLACK);
-                G8RTOS_SignalSemaphore(&sem_SPIA);
-
-                // Reset Mario position
-                mario_x = 40;
-                mario_y = 20;
-                mario_platform = 0;
-
-                // Clear barrels
-                clearBarrels();
-                initBarrels();
-
-                if(lives == 0) {
-                    if(score > high_score) {
-                        high_score = score;
-                    }
-                    transition = 1;
-                    currentState = GAMEOVER;
-                }
-            }
-
-            // Update Mario's position on screen if changed
-            if(old_mario_x != mario_x || old_mario_y != mario_y) {
-                // Erase old position
-                G8RTOS_WaitSemaphore(&sem_SPIA);
-                ST7789_DrawRectangle(old_mario_x, old_mario_y, mario_w, mario_h, ST7789_BLACK);
-                G8RTOS_SignalSemaphore(&sem_SPIA);
-
-                // Check win condition
-                if(mario_y >= 200) {
-                    transition = 1;
-                    win = 1;
-                    currentState = LEVELWON;
-                } else {
-                    // Draw new position
-                    G8RTOS_WaitSemaphore(&sem_SPIA);
-                    ST7789_DrawRectangle(mario_x, mario_y, mario_w, mario_h, ST7789_RED);
-                    G8RTOS_SignalSemaphore(&sem_SPIA);
-                }
-            }
-        }
-        else {
-            sleep(15);
-        }
-    }
-}
-*/
-
-/*
-void MarioMove_Thread(void) {
-   volatile uint32_t joystick_vals;
-   volatile uint16_t js_x, js_y;
-   int16_t old_mario_x, old_mario_y;
-
-    while(1) {
-        //UARTprintf("In MARIO MOVE THREAD\n");
-        if(currentState == GAMEPLAY) {
-            old_mario_x = mario_x;
-            old_mario_y = mario_y;
-
-            // Get result from joystick
-            joystick_vals = G8RTOS_ReadFIFO(JOYSTICK_FIFO);
-            js_x = joystick_vals >> 16;
-            js_y = joystick_vals & 0xFFFF;
-
-
-            // If joystick axis within deadzone, set to 0. Otherwise normalize it.
-            float js_x_add = ((2.0F*(float)(js_x)) / 4096.0F) - 1.0F;
-            float js_y_add = ((2.0F*(float)(js_y)) / 4096.0F) - 1.0F;
-
-            // If joystick axis within deadzone, set to 0.
-            if(js_x_add < 0.35 && js_x_add > -0.35)
-            {
-                js_x_add = 0;
-            }
-            if(js_y_add < 0.35 && js_y_add > (-0.35))
-            {
-                js_y_add = 0;
-            }
-
-            // Update MARIO pos
-            //!!!!!!!! update all pixels once graphics better !!!!!!!!!
-            mario_y += js_y_add * MOVE_PIXELS;
-            mario_x -= js_x_add * MOVE_PIXELS;
-
-            if(old_mario_x != mario_x || old_mario_y != mario_y || (old_mario_y == 30 && old_mario_x == 40)){
-                //erase mario
-                G8RTOS_WaitSemaphore(&sem_SPIA);
-                ST7789_DrawRectangle(old_mario_x, old_mario_y, mario_w, mario_h, ST7789_BLACK);
-                G8RTOS_SignalSemaphore(&sem_SPIA);
-
-                //if won level:
-                if( mario_y >= 200){
-                    transition = 1;
-                    win = 1;
-                    currentState = LEVELWON;
-
-                }
-
-                else{
-                    //draw new mario
-                    G8RTOS_WaitSemaphore(&sem_SPIA);
-                    ST7789_DrawRectangle(mario_x, mario_y, mario_w, mario_h, ST7789_RED);
-                    G8RTOS_SignalSemaphore(&sem_SPIA);
-                }
-
-
-
-            }
-        }
-        else{
-            sleep(15);
-        }
-
-        // sleep
-        //sleep(15);
-    }
-}
-*/
 
 void MarioMove_Thread(void)
 {
@@ -710,6 +476,7 @@ void MarioMove_Thread(void)
    const int GRAVITY = 3;
    const float LADDER_MARGIN = 2;
    int8_t ladder_index = -1;
+   bool falling = false;
 
    while (1)
    {
@@ -752,11 +519,11 @@ void MarioMove_Thread(void)
             int16_t mario_center = mario_x + (mario_w / 2);
 
             // Use margins for easier ladder grabbing
-            if (!ladders[i].is_broken &&
+            if ((!ladders[i].is_broken &&
                 mario_center >= ladders[i].x - LADDER_MARGIN &&
                 mario_center <= ladders[i].x + ladders[i].width + LADDER_MARGIN &&
                 mario_y >= ladders[i].y_bottom &&
-                mario_y <= ladders[i].y_top)
+                mario_y <= ladders[i].y_top) && !jump) // IGNORE LADDERS WHEN JUMPING
             {
                on_ladder = true;
                ladder_index = i;
@@ -768,13 +535,16 @@ void MarioMove_Thread(void)
          // Handle vertical movement
          if (on_ladder)
          {
+             jump = 0; // IGNORE JUMPS ON LADDER
             // On ladder: direct vertical control
-            UARTprintf("js: %d\n", js_y_add);
-            if(js_y_add > 0){
-                mario_y += 2;
+            //UARTprintf("js: %d\n", js_y_add);
+            if (js_y_add > 0)
+            {
+               mario_y += 2;
             }
-            else if(js_y_add < 0){
-                mario_y -= 2;
+            else if (js_y_add < 0)
+            {
+               mario_y -= 2;
             }
 
             // Only constrain to ladder if above platform
@@ -800,7 +570,6 @@ void MarioMove_Thread(void)
             }
 
             // if move up:
-            UARTprintf("%d\n", mario_platform);
             if (mario_y >= next_top_platform && next_top_platform != -1)
             {
                mario_platform++;
@@ -817,82 +586,112 @@ void MarioMove_Thread(void)
          }
          else
          {
-            /*
-
-            // Check if Mario is on a platform
-            on_platform = false;
-            int16_t lowest_platform_y = 0;  // Track the highest platform Mario could be on
-
-            for(int i = 0; i < NUM_PLATFORMS; i++) {
-                Platform* p = &platforms[i];
-
-                // Only check if Mario's center is within the platform's x-range
-                if(mario_x + mario_w/2 >= p->x && mario_x + mario_w/2 <= p->x + p->width) {
-                    int16_t platform_y;
-                    float x_progress = (float)(mario_x + mario_w/2 - p->x) / p->width;
-
-                    if(p->type == FLAT) {
-                        platform_y = p->y;
-                    } else if(p->type == SLOPE_LEFT_DOWN) {
-                        // For left-down slope, y decreases as x increases
-                        platform_y = p->y - (x_progress * p->slope * p->width / 100);
-                    } else { // SLOPE_RIGHT_DOWN
-                        // For right-down slope, y increases as x increases
-                        platform_y = p->y + (x_progress * p->slope * p->width / 100);
-                    }
-
-                    // Check if this platform is below Mario but higher than previous platforms
-                    if(mario_y + mario_h >= platform_y && platform_y > lowest_platform_y) {
-                        lowest_platform_y = platform_y;
-                        // Only set on_platform if Mario is very close to the platform
-                        if(mario_y + mario_h >= platform_y &&
-                           mario_y + mario_h <= platform_y + GRAVITY * 2) {
-                            on_platform = true;
-                            mario_y = platform_y - mario_h;  // Place Mario on platform
-                        }
-                    }
-                }
-
-
-            }
-
-
-            // Apply gravity if not on a platform
-            if(!on_platform) {
-                mario_y += GRAVITY;  // Add because Y_MAX is at top
-            }
-            */
             mario_x -= js_x_add;
+            // mario_y = getPlatformYAtX(&platforms[mario_platform], mario_x);
+            if(falling == true){
+                uint16_t lower_bound = getPlatformYAtX(&platforms[mario_platform - 1], mario_x);
+                if(mario_y > lower_bound){
+                    mario_y -= GRAVITY;
+                }
+                else{
+                    falling == false;
+                    mario_y = lower_bound;
+                }
+            }
+            if(!falling && mario_platform != 0){
+                if(getPlatformYAtX(&platforms[mario_platform], mario_x) == -1) {
+                    mario_y -= GRAVITY;
+                    falling = true;
+                }
+               else{
+                   mario_y = getPlatformYAtX(&platforms[mario_platform], mario_x);
+               }
+            }
+
+
+            //handle jump, should go 6 pixels in air and then come down
+            //UARTprintf("JUMP? %d\n", jump);
+            if (jump)
+            {
+               mario_y += JUMP_PIXELS;
+               mario_up++;
+               if (mario_up == MAX_JUMP_HEIGHT)
+               {
+                  jump = 0;
+               }
+            }
+            else
+            {
+               //mario_y -= GRAVITY;
+               mario_up = 0;
+            }
+
+            if (checkCollision())
+            {
+               // Clear lives display
+               G8RTOS_WaitSemaphore(&sem_SPIA);
+               ST7789_WriteScore(7 * 10 + 10, 32, lives, ST7789_BLACK);
+               G8RTOS_SignalSemaphore(&sem_SPIA);
+
+               lives--;
+
+               // Erase Mario
+               G8RTOS_WaitSemaphore(&sem_SPIA);
+               ST7789_DrawRectangle(mario_x, mario_y, mario_w, mario_h, ST7789_BLACK);
+               G8RTOS_SignalSemaphore(&sem_SPIA);
+
+               // Reset Mario position
+               mario_x = 40;
+               mario_y = 20;
+               mario_platform = 0;
+
+               // Clear barrels
+               clearBarrels();
+               initBarrels();
+
+               if (lives == 0)
+               {
+                  if (score > high_score)
+                  {
+                     high_score = score;
+                  }
+                  transition = 1;
+                  currentState = GAMEOVER;
+               }
+            }
          }
 
-         // Constrain vertical position to screen bounds
+            // Constrain vertical position to screen bounds
+            /*
          if (mario_y < 0)
             mario_y = 0;
          if (mario_y > Y_MAX - mario_h)
             mario_y = Y_MAX - mario_h;
+            */
 
-         // If position changed, update display
-         if (old_mario_x != mario_x || old_mario_y != mario_y)
-         {
-            // Check for level completion
-            if (mario_y >= 200)
+            // If position changed, update display
+            if (old_mario_x != mario_x || old_mario_y != mario_y)
             {
-               transition = 1;
-               win = 1;
-               currentState = LEVELWON;
-            }
-            else
-            {
-               // Erase old position
-               G8RTOS_WaitSemaphore(&sem_SPIA);
-               ST7789_DrawRectangle(old_mario_x, old_mario_y, mario_w, mario_h, ST7789_BLACK);
-               G8RTOS_SignalSemaphore(&sem_SPIA);
+               // Check for level completion
+               if (mario_y >= 200)
+               {
+                  transition = 1;
+                  win = 1;
+                  currentState = LEVELWON;
+               }
+               else
+               {
+                  // Erase old position
+                  G8RTOS_WaitSemaphore(&sem_SPIA);
+                  ST7789_DrawRectangle(old_mario_x, old_mario_y, mario_w, mario_h, ST7789_BLACK);
+                  G8RTOS_SignalSemaphore(&sem_SPIA);
 
-               // Draw new position
-               G8RTOS_WaitSemaphore(&sem_SPIA);
-               ST7789_DrawRectangle(mario_x, mario_y, mario_w, mario_h, ST7789_RED);
-               G8RTOS_SignalSemaphore(&sem_SPIA);
-            }
+                  // Draw new position
+                  G8RTOS_WaitSemaphore(&sem_SPIA);
+                  ST7789_DrawRectangle(mario_x, mario_y, mario_w, mario_h, ST7789_RED);
+                  G8RTOS_SignalSemaphore(&sem_SPIA);
+               }
+
          }
       }
       else
@@ -931,8 +730,9 @@ void Read_Buttons()
 
       else if (currentState == GAMEPLAY)
       {
-         // allow for jump somehow
-         // if gameover -> transition = 1;
+          if (buttons == SW1)
+              jump = 1;
+
       }
       else if (currentState == GAMEOVER || currentState == LEVELWON)
       {

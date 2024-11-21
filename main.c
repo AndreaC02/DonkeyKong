@@ -53,15 +53,14 @@ int main(void)
     //Add Background Threads
     //UARTprintf("ADDING BACKGROUND THREADS\n");
     G8RTOS_AddThread(Idle_Thread, 255, "idle\0");
-    G8RTOS_AddThread(MarioMove_Thread, 1, "move_mario\0"); //1
+    G8RTOS_AddThread(MarioMove_Thread, 2, "move_mario\0"); //1
     G8RTOS_AddThread(Read_Buttons, 1, "buttons\0");
 
     //Add Periodic Threads
     //UARTprintf("ADDING PERIODIC THREADS\n");
     G8RTOS_Add_PeriodicEvent(Get_Joystick, 5, 5); //100, 5
-    G8RTOS_Add_PeriodicEvent(Draw_Screen, 2, 5);
-    G8RTOS_Add_PeriodicEvent(Generate_Barrel, 2, 200);
-    //G8RTOS_Add_PeriodicEvent(Check_Collision, 20, 6);
+    G8RTOS_Add_PeriodicEvent(Draw_Screen, 5, 2);
+    G8RTOS_Add_PeriodicEvent(Generate_Barrel, 500, 2);
 
 
     //Add Aperiodic Threads
