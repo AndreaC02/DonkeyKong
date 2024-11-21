@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <time.h>
 /*********************************Global Variables**********************************/
-GameState currentState = START; // START
+GameState currentState = GAMEPLAY; // START
 uint32_t score = 0;
 uint32_t high_score = 0;
 uint8_t lives = 3;
@@ -33,8 +33,8 @@ uint16_t string_y = 140;
 // Mario coords
 int16_t mario_x = 40;
 int16_t mario_y = 20;
-int16_t mario_w = 5;
-int16_t mario_h = 8;
+int16_t mario_w = MARIO_SPRITE_WIDTH;
+int16_t mario_h = MARIO_SPRITE_HEIGHT;
 uint8_t mario_up = 0;
 uint8_t mario_platform = 0;
 bool on_ladder = false;
@@ -43,14 +43,14 @@ bool jump = 0;
 // Donkey Kong coords
 int16_t dk_x = 15;
 int16_t dk_y = 175;
-int16_t dk_w = 12;
-int16_t dk_h = 12;
+int16_t dk_w = DK_SPRITE_WIDTH;
+int16_t dk_h = DK_SPRITE_HEIGHT;
 
 // Princess coords
 int16_t princess_x = X_MAX / 2;
 int16_t princess_y = 200;
-int16_t princess_w = 5;
-int16_t princess_h = 10;
+int16_t princess_w = PRINCESS_SPRITE_WIDTH;
+int16_t princess_h = PRINCESS_SPRITE_HEIGHT;
 
 // Array of Platforms
 Platform platforms[] = {
@@ -458,6 +458,92 @@ bool isOnPlatform(int16_t x, int16_t y, int8_t *platform_index)
 
    return false;
 }
+
+void drawMario(){
+    //draw mario sprite
+      int i = 0;
+      for(int y = mario_y + MARIO_SPRITE_HEIGHT; y >= mario_y; y--){
+          for(int x = mario_x; x < mario_x + MARIO_SPRITE_WIDTH; x++){
+              G8RTOS_WaitSemaphore(&sem_SPIA);
+              ST7789_DrawPixel(x, y, mario_sprite[i]);
+              G8RTOS_SignalSemaphore(&sem_SPIA);
+              i++;
+          }
+      }
+}
+
+void eraseMario(int16_t old_mario_x, int16_t old_mario_y){
+    //draw mario sprite
+      for(int y = old_mario_y + MARIO_SPRITE_HEIGHT; y >= old_mario_y; y--){
+          for(int x = old_mario_x; x < old_mario_x + MARIO_SPRITE_WIDTH; x++){
+              G8RTOS_WaitSemaphore(&sem_SPIA);
+              ST7789_DrawPixel(x, y, ST7789_BLACK);
+              G8RTOS_SignalSemaphore(&sem_SPIA);
+          }
+      }
+}
+
+void drawDK(){
+    int i = 0;
+    for(int y = dk_y + DK_SPRITE_HEIGHT; y >= dk_y; y--){
+        for(int x = dk_x; x < dk_x + DK_SPRITE_WIDTH; x++){
+            G8RTOS_WaitSemaphore(&sem_SPIA);
+            ST7789_DrawPixel(x, y, dk_sprite[i]);
+            G8RTOS_SignalSemaphore(&sem_SPIA);
+           i++;
+    }
+    }
+
+    //}
+    /*
+    for(int i = 0 ; i < DK_SPRITE_HEIGHT * DK_SPRITE_WIDTH; i++){
+        G8RTOS_WaitSemaphore(&sem_SPIA);
+        ST7789_DrawPixel(x--, y, dk_sprite[i]);
+        G8RTOS_SignalSemaphore(&sem_SPIA);
+        i++;
+        if(x <= dk_x){
+            y--;
+            dk_x = dk_x + DK_SPRITE_WIDTH;
+        }
+    }
+    */
+
+}
+
+void eraseDK(int16_t old_mario_x, int16_t old_mario_y){
+    for(int y = dk_y + DK_SPRITE_HEIGHT; y >= dk_y; y--){
+        for(int x = dk_x; x < dk_x + DK_SPRITE_WIDTH; x++){
+            G8RTOS_WaitSemaphore(&sem_SPIA);
+            ST7789_DrawPixel(x, y, ST7789_BLACK);
+            G8RTOS_SignalSemaphore(&sem_SPIA);
+        }
+    }
+}
+
+void drawPrincess(){
+    //draw princess sprite
+      int i = 0;
+      for(int y = princess_y + PRINCESS_SPRITE_HEIGHT; y >= princess_y; y--){
+          for(int x = princess_x; x < princess_x + PRINCESS_SPRITE_WIDTH; x++){
+              G8RTOS_WaitSemaphore(&sem_SPIA);
+              ST7789_DrawPixel(x, y, princess_sprite[i]);
+              G8RTOS_SignalSemaphore(&sem_SPIA);
+              i++;
+          }
+      }
+}
+
+void erasePrincess(int16_t old_mario_x, int16_t old_mario_y){
+    //erase princess sprite
+    for(int y = princess_y + PRINCESS_SPRITE_HEIGHT; y >= princess_y; y--){
+        for(int x = princess_x + PRINCESS_SPRITE_WIDTH; x >= princess_x; x--){
+            G8RTOS_WaitSemaphore(&sem_SPIA);
+            ST7789_DrawPixel(x, y, ST7789_BLACK);
+            G8RTOS_SignalSemaphore(&sem_SPIA);
+        }
+    }
+}
+
 /*********************************Helper Functions**********************************/
 
 /*************************************Threads***************************************/
@@ -636,9 +722,7 @@ void MarioMove_Thread(void)
                lives--;
 
                // Erase Mario
-               G8RTOS_WaitSemaphore(&sem_SPIA);
-               ST7789_DrawRectangle(mario_x, mario_y, mario_w, mario_h, ST7789_BLACK);
-               G8RTOS_SignalSemaphore(&sem_SPIA);
+               eraseMario(old_mario_x, old_mario_y);
 
                // Reset Mario position
                mario_x = 40;
@@ -682,14 +766,16 @@ void MarioMove_Thread(void)
                else
                {
                   // Erase old position
-                  G8RTOS_WaitSemaphore(&sem_SPIA);
-                  ST7789_DrawRectangle(old_mario_x, old_mario_y, mario_w, mario_h, ST7789_BLACK);
-                  G8RTOS_SignalSemaphore(&sem_SPIA);
+                  //G8RTOS_WaitSemaphore(&sem_SPIA);
+                  //ST7789_DrawRectangle(old_mario_x, old_mario_y, mario_w, mario_h, ST7789_BLACK);
+                  //G8RTOS_SignalSemaphore(&sem_SPIA);
+                   eraseMario(old_mario_x, old_mario_y);
 
                   // Draw new position
-                  G8RTOS_WaitSemaphore(&sem_SPIA);
-                  ST7789_DrawRectangle(mario_x, mario_y, mario_w, mario_h, ST7789_RED);
-                  G8RTOS_SignalSemaphore(&sem_SPIA);
+                  //G8RTOS_WaitSemaphore(&sem_SPIA);
+                  //ST7789_DrawRectangle(mario_x, mario_y, mario_w, mario_h, ST7789_RED);
+                  //G8RTOS_SignalSemaphore(&sem_SPIA);
+                  drawMario();
                }
 
          }
@@ -853,13 +939,15 @@ void Draw_Screen(void)
       drawAllLadders();
 
       // draw princess
-      G8RTOS_WaitSemaphore(&sem_SPIA);
-      ST7789_DrawRectangle(princess_x, princess_y, princess_w, princess_h, ST7789_PINK);
-      G8RTOS_SignalSemaphore(&sem_SPIA);
+      //G8RTOS_WaitSemaphore(&sem_SPIA);
+      //ST7789_DrawRectangle(princess_x, princess_y, princess_w, princess_h, ST7789_PINK);
+      //G8RTOS_SignalSemaphore(&sem_SPIA);
+      drawPrincess();
       // draw dk
-      G8RTOS_WaitSemaphore(&sem_SPIA);
-      ST7789_DrawRectangle(dk_x, dk_y, dk_w, dk_h, ST7789_BROWN);
-      G8RTOS_SignalSemaphore(&sem_SPIA);
+      //G8RTOS_WaitSemaphore(&sem_SPIA);
+      //ST7789_DrawRectangle(dk_x, dk_y, dk_w, dk_h, ST7789_BROWN);
+      //G8RTOS_SignalSemaphore(&sem_SPIA);
+      drawDK();
       // draw hazards, rn barrels other stuff later if time, fireballs?
       drawBarrels();
 
