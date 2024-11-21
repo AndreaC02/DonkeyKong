@@ -75,8 +75,8 @@ Platform platforms[] = {
 //Array of Ladders
 Ladder ladders[] = {
    // Ground floor ladders
-   {60, 20, 55, 12, 8, false, ST7789_YELLOW},
-   {X_MAX-80, 20, 50, 12, 8, false, ST7789_YELLOW},
+   {60, 20, 55, 12, 8, true, ST7789_YELLOW},
+   {X_MAX-80, 20, 55, 12, 8, false, ST7789_YELLOW},
 
    // Second level ladders
    //{X_MAX-120, 50, 80, 10, 8, false, ST7789_YELLOW},
@@ -145,39 +145,73 @@ void drawAllPlatforms(void) {
 }
 
 void drawLadder(const Ladder* ladder) {
-   // Draw vertical sides
+    // Draw vertical sides
 
-    G8RTOS_WaitSemaphore(&sem_SPIA);
-    ST7789_DrawLine(ladder->x, ladder->y_bottom,
-                   ladder->x, ladder->y_top, 
-                   ladder->color);
-   G8RTOS_SignalSemaphore(&sem_SPIA);
-                   
-   G8RTOS_WaitSemaphore(&sem_SPIA);
-   ST7789_DrawLine(ladder->x + ladder->width, ladder->y_bottom,
-                   ladder->x + ladder->width, ladder->y_top,
-                   ladder->color);
-   G8RTOS_SignalSemaphore(&sem_SPIA);
-   
-   // Draw rungs
-   if (!ladder->is_broken) {
-       for(uint16_t y = ladder->y_bottom; y <= ladder->y_top; y += ladder->rung_space) {
-           G8RTOS_WaitSemaphore(&sem_SPIA);
-           ST7789_DrawLine(ladder->x, y,
-                         ladder->x + ladder->width, y,
-                         ladder->color);
-           G8RTOS_SignalSemaphore(&sem_SPIA);
-       }
-   } else {
-       uint16_t half_height = (ladder->y_top - ladder->y_bottom) / 2;
-       for(uint16_t y = ladder->y_bottom; y <= ladder->y_bottom + half_height; y += ladder->rung_space) {
-           G8RTOS_WaitSemaphore(&sem_SPIA);
-           ST7789_DrawLine(ladder->x, y,
-                         ladder->x + ladder->width, y,
-                         ladder->color);
-           G8RTOS_SignalSemaphore(&sem_SPIA);
-       }
-   }
+    // Draw rungs
+    if (!ladder->is_broken) {
+        G8RTOS_WaitSemaphore(&sem_SPIA);
+        ST7789_DrawLine(ladder->x, ladder->y_bottom,
+                       ladder->x, ladder->y_top,
+                       ladder->color);
+        G8RTOS_SignalSemaphore(&sem_SPIA);
+
+        G8RTOS_WaitSemaphore(&sem_SPIA);
+        ST7789_DrawLine(ladder->x + ladder->width, ladder->y_bottom,
+                       ladder->x + ladder->width, ladder->y_top,
+                       ladder->color);
+        G8RTOS_SignalSemaphore(&sem_SPIA);
+
+        for(uint16_t y = ladder->y_bottom; y <= ladder->y_top; y += ladder->rung_space) {
+            G8RTOS_WaitSemaphore(&sem_SPIA);
+            ST7789_DrawLine(ladder->x, y,
+                          ladder->x + ladder->width, y,
+                          ladder->color);
+            G8RTOS_SignalSemaphore(&sem_SPIA);
+        }
+    }
+    else {
+        uint16_t quarter_height = (ladder->y_top - ladder->y_bottom) / 4;
+        uint16_t extra_height = quarter_height / 3; // Draw a bit extra for vertical line
+
+        // Draw bottom section vertical lines (with extra height)
+       G8RTOS_WaitSemaphore(&sem_SPIA);
+       ST7789_DrawLine(ladder->x, ladder->y_bottom,
+                       ladder->x, ladder->y_bottom + quarter_height + extra_height,
+                      ladder->color);
+       ST7789_DrawLine(ladder->x + ladder->width, ladder->y_bottom,
+                      ladder->x + ladder->width, ladder->y_bottom + quarter_height + extra_height,
+                      ladder->color);
+       G8RTOS_SignalSemaphore(&sem_SPIA);
+
+       // Draw top section vertical lines (with extra height)
+       G8RTOS_WaitSemaphore(&sem_SPIA);
+       ST7789_DrawLine(ladder->x, ladder->y_top - quarter_height - extra_height,
+                      ladder->x, ladder->y_top,
+                      ladder->color);
+       ST7789_DrawLine(ladder->x + ladder->width, ladder->y_top - quarter_height - extra_height,
+                      ladder->x + ladder->width, ladder->y_top,
+                      ladder->color);
+       G8RTOS_SignalSemaphore(&sem_SPIA);
+
+        // Draw bottom quarter
+        for(uint16_t y = ladder->y_bottom; y <= ladder->y_bottom + quarter_height; y += ladder->rung_space) {
+            G8RTOS_WaitSemaphore(&sem_SPIA);
+            ST7789_DrawLine(ladder->x, y,
+                          ladder->x + ladder->width, y,
+                          ladder->color);
+            G8RTOS_SignalSemaphore(&sem_SPIA);
+        }
+
+        // Draw top quarter
+        for(uint16_t y = ladder->y_top - quarter_height; y <= ladder->y_top; y += ladder->rung_space) {
+            G8RTOS_WaitSemaphore(&sem_SPIA);
+            ST7789_DrawLine(ladder->x, y,
+                          ladder->x + ladder->width, y,
+                          ladder->color);
+            G8RTOS_SignalSemaphore(&sem_SPIA);
+        }
+\
+    }
 }
 
 void drawAllLadders(void) {
@@ -503,6 +537,8 @@ void MarioMove_Thread(void) {
     }
 }
 */
+
+/*
 void MarioMove_Thread(void) {
    volatile uint32_t joystick_vals;
    volatile uint16_t js_x, js_y;
@@ -536,100 +572,9 @@ void MarioMove_Thread(void) {
 
             // Update MARIO pos
             //!!!!!!!! update all pixels once graphics better !!!!!!!!!
-            if(js_x_add > 0){
-                mario_dir = RIGHT;
-            }
-            else if(js_x_add < 0){
-                mario_dir = LEFT;
-            }
-            else{
-                mario_dir = STILL;
-            }
-            //if mario is on a ladder, he can move vertically
-            /*
-            for(int i = 0; i < NUM_LADDERS; i++){
-                if(mario_x >= ladders[i].x && mario_x <= ladders[i].x + ladders[i].width && 
-                   mario_y >= ladders[i].y_bottom && mario_y <= ladders[i].y_top){
-                    if(js_y_add > 0){
-                        mario_dir = UP;
-                        //once reached top platform update:
-                        if(mario_y == ladders[i].y_top){
-                            mario_y = platforms[mario_platform].y + platforms[mario_platform].height;
-                            mario_platform ++;
-                        }
-                    }
-                     else if (js_y_add < 0){
-                           mario_dir = DOWN;
-                           //once reached bottom platform:
-                           if(mario_y == ladders[i].y_bottom){
-                              mario_y = platforms[mario_platform].y + platforms[mario_platform].height;
-                              mario_platform --;
-                           }
-                     }
-                    }
-                    mario_y += js_y_add * MOVE_PIXELS;
-                }
-                */
-            //else if mario is on a flat platform, move horizontally
-            if(mario_platform == 0 || mario_platform == 6 || mario_platform == 7){
-                mario_x -= js_x_add * MOVE_PIXELS;
-            }
-            //else if mario is on a slope, move up appropriate pixels
-            else if(mario_platform > 0 && mario_platform < NUM_PLATFORMS - 1){ 
-               int16_t pixels_per_step = platforms[mario_platform].width / platforms[mario_platform].height;
-               if((mario_x - platforms[mario_platform].x) % pixels_per_step == 0) {
-                  if(platforms[mario_platform].type == SLOPE_LEFT_DOWN){
-                     if(mario_dir == RIGHT){
-                        mario_y -= 1;
-                     }
-                     else if(mario_dir == LEFT){
-                        mario_y += 1;
-                     }
-                  }
-                  else if(platforms[mario_platform].type == SLOPE_RIGHT_DOWN){
-                     if(mario_dir == RIGHT){
-                        mario_y += 1;
-                     }
-                     else if(mario_dir == LEFT){
-                        mario_y -= 1;
-                     }
-                  }
-               }
-            }
-            
-            bool collided = checkCollision();
-            //if collided
-            if(collided){
-                //clear lives
-                G8RTOS_WaitSemaphore(&sem_SPIA);
-                ST7789_WriteScore(7 * 10 + 10, 32, lives, ST7789_BLACK);
-                G8RTOS_SignalSemaphore(&sem_SPIA);
-
-                //update lives
-                lives--;
-
-                //Erase Mario position
-                G8RTOS_WaitSemaphore(&sem_SPIA);
-                ST7789_DrawRectangle(mario_x, mario_y, mario_w, mario_h, ST7789_BLACK);
-                G8RTOS_SignalSemaphore(&sem_SPIA);
-
-                // Reset Mario position
-                mario_x = 40;
-                mario_y = 20;
-
-                // Clear all active barrels
-                clearBarrels();
-                initBarrels();
-
-                // Check if game over
-                if(lives == 0) {
-                    if(score > high_score) {
-                        high_score = score;
-                    }
-                    transition = 1;
-                    currentState = GAMEOVER;
-                }
-            }
+            mario_y += js_y_add * MOVE_PIXELS;
+            mario_x -= js_x_add * MOVE_PIXELS;
+           
             if(old_mario_x != mario_x || old_mario_y != mario_y || (old_mario_y == 30 && old_mario_x == 40)){
                 //erase mario
                 G8RTOS_WaitSemaphore(&sem_SPIA);
@@ -663,6 +608,136 @@ void MarioMove_Thread(void) {
         //sleep(15);
     }
 }
+*/
+
+void MarioMove_Thread(void) {
+    volatile uint32_t joystick_vals;
+    volatile uint16_t js_x, js_y;
+    int16_t old_mario_x, old_mario_y;
+    bool on_platform = false;
+    const int GRAVITY = 3;
+
+    while(1) {
+        if(currentState == GAMEPLAY) {
+            old_mario_x = mario_x;
+            old_mario_y = mario_y;
+
+            // Get result from joystick
+            joystick_vals = G8RTOS_ReadFIFO(JOYSTICK_FIFO);
+            js_x = joystick_vals >> 16;
+            js_y = joystick_vals & 0xFFFF;
+
+            // Normalize joystick values
+            float js_x_add = ((2.0F*(float)(js_x)) / 4096.0F) - 1.0F;
+            float js_y_add = ((2.0F*(float)(js_y)) / 4096.0F) - 1.0F;
+
+            // Apply deadzone
+            if(js_x_add < 0.35 && js_x_add > -0.35) js_x_add = 0;
+            if(js_y_add < 0.35 && js_y_add > -0.35) js_y_add = 0;
+
+            // Handle horizontal movement
+            mario_x -= js_x_add * MOVE_PIXELS;
+
+            // Constrain to screen bounds
+            if(mario_x < 0) mario_x = 0;
+            if(mario_x > X_MAX - mario_w) mario_x = X_MAX - mario_w;
+
+            // Check if Mario is on a ladder
+            on_ladder = false;
+            for(int i = 0; i < NUM_LADDERS; i++) {
+                if(!ladders[i].is_broken && 
+                   mario_x + mario_w/2 >= ladders[i].x &&
+                   mario_x + mario_w/2 <= ladders[i].x + ladders[i].width &&
+                   mario_y >= ladders[i].y_bottom && 
+                   mario_y <= ladders[i].y_top) {
+                    on_ladder = true;
+                    break;
+                }
+            }
+
+            // Handle vertical movement
+            if(on_ladder) {
+                // On ladder: direct vertical control
+                mario_y += js_y_add * MOVE_PIXELS;  // Negative because Y_MAX is at top
+            }
+            else {
+                /*
+
+                // Check if Mario is on a platform
+                on_platform = false;
+                int16_t lowest_platform_y = 0;  // Track the highest platform Mario could be on
+
+                for(int i = 0; i < NUM_PLATFORMS; i++) {
+                    Platform* p = &platforms[i];
+                    
+                    // Only check if Mario's center is within the platform's x-range
+                    if(mario_x + mario_w/2 >= p->x && mario_x + mario_w/2 <= p->x + p->width) {
+                        int16_t platform_y;
+                        float x_progress = (float)(mario_x + mario_w/2 - p->x) / p->width;
+
+                        if(p->type == FLAT) {
+                            platform_y = p->y;
+                        } else if(p->type == SLOPE_LEFT_DOWN) {
+                            // For left-down slope, y decreases as x increases
+                            platform_y = p->y - (x_progress * p->slope * p->width / 100);
+                        } else { // SLOPE_RIGHT_DOWN
+                            // For right-down slope, y increases as x increases
+                            platform_y = p->y + (x_progress * p->slope * p->width / 100);
+                        }
+
+                        // Check if this platform is below Mario but higher than previous platforms
+                        if(mario_y + mario_h >= platform_y && platform_y > lowest_platform_y) {
+                            lowest_platform_y = platform_y;
+                            // Only set on_platform if Mario is very close to the platform
+                            if(mario_y + mario_h >= platform_y &&
+                               mario_y + mario_h <= platform_y + GRAVITY * 2) {
+                                on_platform = true;
+                                mario_y = platform_y - mario_h;  // Place Mario on platform
+                            }
+                        }
+                    }
+
+
+                }
+                
+
+                // Apply gravity if not on a platform
+                if(!on_platform) {
+                    mario_y += GRAVITY;  // Add because Y_MAX is at top
+                }
+                */
+                mario_x -= js_x_add;
+            }
+
+            // Constrain vertical position to screen bounds
+            if(mario_y < 0) mario_y = 0;
+            if(mario_y > Y_MAX - mario_h) mario_y = Y_MAX - mario_h;
+
+            // If position changed, update display
+            if(old_mario_x != mario_x || old_mario_y != mario_y) {
+                // Check for level completion
+                if(mario_y >= 200) {
+                    transition = 1;
+                    win = 1;
+                    currentState = LEVELWON;
+                } else {
+                    // Erase old position
+                    G8RTOS_WaitSemaphore(&sem_SPIA);
+                    ST7789_DrawRectangle(old_mario_x, old_mario_y, mario_w, mario_h, ST7789_BLACK);
+                    G8RTOS_SignalSemaphore(&sem_SPIA);
+
+                    // Draw new position
+                    G8RTOS_WaitSemaphore(&sem_SPIA);
+                    ST7789_DrawRectangle(mario_x, mario_y, mario_w, mario_h, ST7789_RED);
+                    G8RTOS_SignalSemaphore(&sem_SPIA);
+                }
+            }
+        } else {
+            sleep(15);
+        }
+    }
+}
+
 void Read_Buttons()
 {
     // Initialize / declare any variables here
