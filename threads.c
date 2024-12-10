@@ -770,10 +770,17 @@ void MarioMove_Thread(void)
          // handle jump, should go 6 pixels in air and then come down
          else if (jump && !on_ladder)
          {
+            mario_x -= js_x_add * MOVE_PIXELS;
             mario_up++;
             if (mario_up >= MAX_JUMP_HEIGHT)
             {
                mario_y -= GRAVITY;
+
+               if(mario_platform + 1 < NUM_PLATFORMS)
+               {
+               drawPlatform(&platforms[mario_platform + 1]);
+               }
+
                if (mario_y <= getPlatformYAtX(&platforms[mario_platform], mario_x))
                {
                   jump = 0;
