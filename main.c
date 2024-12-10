@@ -59,13 +59,14 @@ int main(void)
     //Add Periodic Threads
     //UARTprintf("ADDING PERIODIC THREADS\n");
     G8RTOS_Add_PeriodicEvent(Get_Joystick, 5, 5); //100, 5
-    G8RTOS_Add_PeriodicEvent(Draw_Screen, 5, 2);
-    G8RTOS_Add_PeriodicEvent(Generate_Barrel, 500, 2);
+    G8RTOS_Add_PeriodicEvent(Draw_Screen, 100, 2);
+    G8RTOS_Add_PeriodicEvent(Generate_Barrel, 4000, 2);
 
 
     //Add Aperiodic Threads
     //UARTprintf("ADDING APERIODIC THREADS\n");
     G8RTOS_Add_APeriodicEvent(GPIOE_Handler, 5, INT_GPIOE);
+    //G8RTOS_Add_APeriodicEvent(&DAC_Timer_Handler, 5, DAC_INTERRUPT);
 
 
     G8RTOS_Launch();

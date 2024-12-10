@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include "driverlib/timer.h"
 /*********************************Global Variables**********************************/
 GameState currentState = GAMEPLAY; // START
 uint32_t score = 0;
@@ -19,16 +20,20 @@ uint8_t lives = 3;
 uint8_t level = 1;
 bool transition = 0;
 bool win = 0;
+bool draw_static_elements = false;
 
 uint8_t SLOPE_ADJUST = 50;
-uint8_t MOVE_PIXELS = 5;
-uint8_t MOVE_BARRELS = 1;
-uint8_t JUMP_PIXELS = 8;
-uint8_t MAX_JUMP_HEIGHT = 6;
+uint8_t MOVE_PIXELS = 2;
+uint8_t MOVE_BARRELS = 3;
+uint8_t JUMP_PIXELS = 1;
+uint8_t MAX_JUMP_HEIGHT = 15;
 
+// String coords
 uint16_t start_string_x = 107;
 uint16_t gameover_string_x = 115;
 uint16_t string_y = 140;
+
+bool collided = false;
 
 // Mario coords
 int16_t mario_x = 40;
@@ -39,6 +44,7 @@ uint8_t mario_up = 0;
 uint8_t mario_platform = 0;
 bool on_ladder = false;
 bool jump = 0;
+uint16_t *mario_sprite = mario_left_sprite;
 
 // Donkey Kong coords
 int16_t dk_x = 15;
@@ -58,14 +64,14 @@ Platform platforms[] = {
     {0, 20, X_MAX, 0, 0, FLAT, ST7789_LIGHTRED},
 
     // Sloped platforms from bottom to top - shorter, more evenly spaced
-    {10, 50, 200, 5, 4, SLOPE_LEFT_DOWN, ST7789_LIGHTRED},
-    {30, 70, 200, 5, 4, SLOPE_RIGHT_DOWN, ST7789_LIGHTRED}, // y2
-    {10, 110, 200, 5, 4, SLOPE_LEFT_DOWN, ST7789_LIGHTRED},
-    {30, 135, 200, 5, 4, SLOPE_RIGHT_DOWN, ST7789_LIGHTRED}, // y2 = 13
+    {0, 50, 200, 5, 4, SLOPE_LEFT_DOWN, ST7789_LIGHTRED},
+    {35, 70, 200, 5, 4, SLOPE_RIGHT_DOWN, ST7789_LIGHTRED}, // y2
+    {0, 110, 200, 5, 4, SLOPE_LEFT_DOWN, ST7789_LIGHTRED},
+    {35, 135, 200, 5, 4, SLOPE_RIGHT_DOWN, ST7789_LIGHTRED}, // y2 = 13
     //{40, 170, 100, 5, 15, SLOPE_LEFT_DOWN, ST7789_LIGHTRED},
     // Top DK platform - flat section followed by slope
     {100, 170, 100, 5, 4, SLOPE_LEFT_DOWN, ST7789_LIGHTRED}, // Sloped section
-    {10, 174, 100, 0, 0, FLAT, ST7789_LIGHTRED},             // Flat section for DK
+    {0, 174, 100, 0, 0, FLAT, ST7789_LIGHTRED},              // Flat section for DK
 
     // Princess platform at top - centered small platform
     {X_MAX / 2 - 30, 200, 60, 5, 0, FLAT, ST7789_LIGHTRED}};
@@ -74,11 +80,11 @@ Platform platforms[] = {
 Ladder ladders[] = {
     // Ground floor ladders
     {60, 20, 55, 12, 8, true, ST7789_YELLOW},
-    {X_MAX - 80, 20, 55, 10, 8, false, ST7789_YELLOW},
+    {X_MAX - 80, 20, 55, 12, 8, false, ST7789_YELLOW},
 
     // Second level ladders
     //{90, 50, 80, 10, 8, false, ST7789_YELLOW},
-    {X_MAX-120, 50, 173, 12, 8, false, ST7789_YELLOW}, //82
+    {X_MAX - 120, 50, 173, 12, 8, false, ST7789_YELLOW}, // 82
 
     // Third level ladders
     {60, 75, 110, 12, 8, false, ST7789_YELLOW},
@@ -94,16 +100,19 @@ Ladder ladders[] = {
 
     // Two ladders from DK platform to princess platform
     //{70, 170, 200, 10, 8, false, ST7789_YELLOW}, // Left ladder next to DK
-    {90, 170, 200, 10, 8, false, ST7789_YELLOW}  // Right ladder next to DK
+    {90, 170, 200, 10, 8, false, ST7789_YELLOW} // Right ladder next to DK
 };
 
 #define NUM_PLATFORMS (sizeof(platforms) / sizeof(Platform))
 #define NUM_LADDERS (sizeof(ladders) / sizeof(Ladder))
 
-#define MAX_BARRELS 4 // 4
-#define BARREL_SIZE 5 // width and height of barrel
+#define MAX_BARRELS 4
 Barrel barrels[MAX_BARRELS];
 uint8_t active_barrel_count = 0;
+
+// #define SIGNAL_STEPS (sizeof(music) / sizeof(music))
+// uint16_t dac_step = 0;
+// int16_t current_volume = 0xFFF;
 
 /*********************************Global Variables**********************************/
 
@@ -244,103 +253,85 @@ void drawBarrels()
    {
       for (int i = 0; i < MAX_BARRELS; i++)
       {
-         // UARTprintf("BARREL INDEX AND ACTIVE?: %d\t%d\n", i, barrels[i].active);
-         if (barrels[i].active == 1)
+         if (barrels[i].active)
          {
-            // UARTprintf("ACTIVE BARREL INDEX: %d\n", i);
-            // UARTprintf("I: %d\tDIR: %d\tFALL: %d\tPI: %d\n", i, barrels[i].dir, barrels[i].falling, barrels[i].platform_index);
-            //  Save old position for erasing
+            // Save old position for erasing
             int16_t old_x = barrels[i].x;
             int16_t old_y = barrels[i].y;
 
-            uint16_t landing_y = 0;
-            if (platforms[barrels[i].platform_index - 1].type != SLOPE_RIGHT_DOWN)
-            {
-               landing_y = platforms[barrels[i].platform_index - 1].y + platforms[barrels[i].platform_index - 1].height;
-            }
-            else
-            {
-               landing_y = platforms[barrels[i].platform_index - 1].y + platforms[barrels[i].platform_index - 1].height + (platforms[barrels[i].platform_index - 1].width * platforms[barrels[i].platform_index - 1].slope / 100);
-            }
-            // Move barrel based on state
             if (barrels[i].falling)
             {
-               // Check for collision with lower platform
-               if (barrels[i].y <= landing_y)
+               drawPlatform(&platforms[barrels[i].platform_index]);
+               // Move down when falling
+               barrels[i].y -= 3; // Falling speed
+
+               // Check for landing on lower platform
+               int16_t platform_y = getPlatformYAtX(&platforms[barrels[i].platform_index - 1], barrels[i].x);
+               if (platform_y != -1 && barrels[i].y + 1 <= platform_y)
                {
-                  barrels[i].falling = 0;
-                  --barrels[i].platform_index;
-                  barrels[i].dir *= -1;
-               }
-               // else: no collision:
-               else
-               {
-                  --barrels[i].y;
+                  barrels[i].falling = false;
+                  barrels[i].platform_index--;
+                  barrels[i].y = platform_y;
+                  barrels[i].dir *= -1; // Change direction when landing
                }
             }
             else
             {
-               // special case: reached end of platform 6, DK flat platform
+               // Special case: transition from platform 6 (DK's flat platform) to platform 5
                if (barrels[i].platform_index == 6 &&
                    (barrels[i].x < platforms[barrels[i].platform_index].x ||
-                    barrels[i].x + BARREL_SIZE > platforms[barrels[i].platform_index].x + platforms[barrels[i].platform_index].width))
+                    barrels[i].x + BARREL_SPRITE_WIDTH > platforms[barrels[i].platform_index].x + platforms[barrels[i].platform_index].width))
                {
                   barrels[i].platform_index--;
                   // Move horizontally along platform
                   barrels[i].x += (MOVE_BARRELS)*barrels[i].dir;
-
-                  if (platforms[barrels[i].platform_index].type != FLAT)
-                  {
-                     // Convert slope percentage to pixel movement
-                     float slope_pixel_adjust = (float)(platforms[barrels[i].platform_index].slope) / 100.0f * MOVE_BARRELS;
-                     barrels[i].y -= (int16_t)slope_pixel_adjust;
-                  }
                }
-               // else check if barrel is on bottom flat platform and offscreen
+               // Handle top platform
+               else if (barrels[i].platform_index == 6)
+               {
+                  barrels[i].x += (MOVE_BARRELS * barrels[i].dir);
+               }
+               // Handle Bottom platform
                else if (barrels[i].platform_index == 0)
                {
-                  barrels[i].x += (MOVE_BARRELS)*barrels[i].dir;
-                  if (barrels[i].x <= 0 || barrels[i].x + BARREL_SIZE >= X_MAX)
+                  // Bottom platform - check if off screen
+                  barrels[i].x += (MOVE_BARRELS * barrels[i].dir);
+                  if (barrels[i].x <= 0 || barrels[i].x + BARREL_SPRITE_WIDTH >= X_MAX)
                   {
                      barrels[i].active = false;
                      active_barrel_count--;
+                     continue;
                   }
                }
-               // else check if barrel reached end of current platform
-               else if (barrels[i].x + BARREL_SIZE < platforms[barrels[i].platform_index].x ||
-                        barrels[i].x > platforms[barrels[i].platform_index].x + platforms[barrels[i].platform_index].width)
-               {
-                  // set barrel to fall
-                  barrels[i].falling = true;
-               }
+               //handle all other platforms
                else
                {
-                  // Move horizontally along platform
-                  barrels[i].x += (MOVE_BARRELS)*barrels[i].dir;
+                  // Move horizontally
+                  barrels[i].x += (MOVE_BARRELS * barrels[i].dir);
 
-                  if (platforms[barrels[i].platform_index].type != FLAT)
+                  // Get current platform y at barrel's x position
+                  int16_t platform_y = getPlatformYAtX(&platforms[barrels[i].platform_index], barrels[i].x);
+
+                  // Check if barrel has reached end of platform
+                  if (platform_y == -1)
                   {
-                     // Calculate how many horizontal pixels per 1 vertical pixel
-                     int16_t pixels_per_step = platforms[barrels[i].platform_index].width / platforms[barrels[i].platform_index].height;
-
-                     // Adjust y position based on relative movement along platform
-                     if ((barrels[i].x - platforms[barrels[i].platform_index].x) % pixels_per_step == 0)
-                     {
-                        barrels[i].y--; // Move down
-                     }
+                     barrels[i].falling = true;
+                  }
+                  else
+                  {
+                     // Update y position based on platform slope
+                     barrels[i].y = platform_y;
                   }
                }
             }
+
             // Erase old position
-            G8RTOS_WaitSemaphore(&sem_SPIA);
-            ST7789_DrawRectangle(old_x, old_y, BARREL_SIZE, BARREL_SIZE, ST7789_BLACK);
-            G8RTOS_SignalSemaphore(&sem_SPIA);
+            eraseBarrel(old_x, old_y);
+
             // Draw new position if still active
             if (barrels[i].active)
             {
-               G8RTOS_WaitSemaphore(&sem_SPIA);
-               ST7789_DrawRectangle(barrels[i].x, barrels[i].y, BARREL_SIZE, BARREL_SIZE, ST7789_WHITE);
-               G8RTOS_SignalSemaphore(&sem_SPIA);
+               drawBarrel(barrels[i].x, barrels[i].y);
             }
          }
       }
@@ -353,12 +344,7 @@ void clearBarrels()
    {
       for (int i = 0; i < MAX_BARRELS; i++)
       {
-         if (barrels[i].active == 1)
-         {
-            G8RTOS_WaitSemaphore(&sem_SPIA);
-            ST7789_DrawRectangle(barrels[i].x, barrels[i].y, BARREL_SIZE, BARREL_SIZE, ST7789_BLACK);
-            G8RTOS_SignalSemaphore(&sem_SPIA);
-         }
+         eraseBarrel(barrels[i].x, barrels[i].y);
       }
    }
 }
@@ -386,8 +372,8 @@ bool checkCollision()
 
       // Rectangle collision bounds for current barrel
       int16_t barrel_left = barrels[i].x;
-      int16_t barrel_right = barrels[i].x + BARREL_SIZE;
-      int16_t barrel_top = barrels[i].y + BARREL_SIZE; // Adding size because y increases downward
+      int16_t barrel_right = barrels[i].x + BARREL_SPRITE_WIDTH;
+      int16_t barrel_top = barrels[i].y + BARREL_SPRITE_HEIGHT; // Adding size because y increases downward
       int16_t barrel_bottom = barrels[i].y;
 
       // First check if rectangles do NOT overlap
@@ -419,19 +405,23 @@ int16_t getPlatformYAtX(const Platform *platform, int16_t x)
       return platform->y + platform->height;
    }
 
-   // For sloped platforms, calculate y based on progress along platform
+   // Calculate how far along the platform we are
    float progress = (float)(x - platform->x) / platform->width;
 
-   // Calculate y based on platform type and slope
+   // Calculate total height change based on slope
+   int16_t height_change = (platform->width * platform->slope) / 100;
+
    if (platform->type == SLOPE_LEFT_DOWN)
    {
-      // Platform slopes down as x increases
-      return (platform->y - (progress * platform->slope * platform->width / 100)) + platform->height;
+      // Platform slopes down from left to right
+      int16_t y = platform->y - (progress * height_change);
+      return y + platform->height + 2;
    }
-   else
-   { // SLOPE_RIGHT_DOWN
-      // Platform slopes up as x increases
-      return (platform->y + (progress * platform->slope * platform->width / 100)) + platform->height;
+   else // SLOPE_RIGHT_DOWN
+   {
+      // Platform slopes up from left to right
+      int16_t y = platform->y + (progress * height_change);
+      return y + platform->height + 2;
    }
 }
 
@@ -459,98 +449,186 @@ bool isOnPlatform(int16_t x, int16_t y, int8_t *platform_index)
    return false;
 }
 
-void drawMario(){
-    //draw mario sprite
-      int i = 0;
-      for(int y = mario_y + MARIO_SPRITE_HEIGHT; y >= mario_y; y--){
-          for(int x = mario_x; x < mario_x + MARIO_SPRITE_WIDTH; x++){
-              G8RTOS_WaitSemaphore(&sem_SPIA);
-              ST7789_DrawPixel(x, y, mario_sprite[i]);
-              G8RTOS_SignalSemaphore(&sem_SPIA);
-              i++;
-          }
-      }
-}
-
-void eraseMario(int16_t old_mario_x, int16_t old_mario_y){
-    //draw mario sprite
-      for(int y = old_mario_y + MARIO_SPRITE_HEIGHT; y >= old_mario_y; y--){
-          for(int x = old_mario_x; x < old_mario_x + MARIO_SPRITE_WIDTH; x++){
-              G8RTOS_WaitSemaphore(&sem_SPIA);
-              ST7789_DrawPixel(x, y, ST7789_BLACK);
-              G8RTOS_SignalSemaphore(&sem_SPIA);
-          }
-      }
-}
-
-void drawDK(){
+void drawMario(int16_t old_mario_x, int16_t old_mario_y) {
+    // draw mario sprite
     int i = 0;
-    for(int y = dk_y + DK_SPRITE_HEIGHT; y >= dk_y; y--){
-        for(int x = dk_x; x < dk_x + DK_SPRITE_WIDTH; x++){
-            G8RTOS_WaitSemaphore(&sem_SPIA);
-            ST7789_DrawPixel(x, y, dk_sprite[i]);
-            G8RTOS_SignalSemaphore(&sem_SPIA);
-           i++;
-    }
-    }
-
-    //}
-    /*
-    for(int i = 0 ; i < DK_SPRITE_HEIGHT * DK_SPRITE_WIDTH; i++){
-        G8RTOS_WaitSemaphore(&sem_SPIA);
-        ST7789_DrawPixel(x--, y, dk_sprite[i]);
-        G8RTOS_SignalSemaphore(&sem_SPIA);
-        i++;
-        if(x <= dk_x){
-            y--;
-            dk_x = dk_x + DK_SPRITE_WIDTH;
+    G8RTOS_WaitSemaphore(&sem_SPIA);
+    for(int y = mario_y + MARIO_SPRITE_HEIGHT; y >= mario_y + 1; y--) {
+        for(int x = mario_x; x < mario_x + MARIO_SPRITE_WIDTH; x++) {
+            ST7789_DrawPixel(x, y, mario_sprite[i]);
+            i++;
         }
     }
-    */
+    G8RTOS_SignalSemaphore(&sem_SPIA);
 
-}
+    // Check both current and previous positions for ladder intersections
+    int16_t prev_mario_x = old_mario_x;
+    int16_t prev_mario_y = old_mario_y;
 
-void eraseDK(int16_t old_mario_x, int16_t old_mario_y){
-    for(int y = dk_y + DK_SPRITE_HEIGHT; y >= dk_y; y--){
-        for(int x = dk_x; x < dk_x + DK_SPRITE_WIDTH; x++){
-            G8RTOS_WaitSemaphore(&sem_SPIA);
-            ST7789_DrawPixel(x, y, ST7789_BLACK);
-            G8RTOS_SignalSemaphore(&sem_SPIA);
+    // Create a bounding box that covers both old and new positions
+    int16_t min_x = (prev_mario_x < mario_x) ? prev_mario_x : mario_x;
+    int16_t max_x = (prev_mario_x > mario_x) ? prev_mario_x + MARIO_SPRITE_WIDTH : mario_x + MARIO_SPRITE_WIDTH;
+    int16_t min_y = (prev_mario_y < mario_y) ? prev_mario_y : mario_y;
+    int16_t max_y = (prev_mario_y > mario_y) ? prev_mario_y + MARIO_SPRITE_HEIGHT : mario_y + MARIO_SPRITE_HEIGHT;
+    
+    // Check all ladders that intersect with this larger bounding box
+    for (int i = 0; i < NUM_LADDERS; i++) {
+        if (max_x >= ladders[i].x && 
+            min_x <= ladders[i].x + ladders[i].width &&
+            max_y >= ladders[i].y_bottom && 
+            min_y <= ladders[i].y_top) {
+            drawLadder(&ladders[i]);
         }
     }
 }
 
-void drawPrincess(){
-    //draw princess sprite
-      int i = 0;
-      for(int y = princess_y + PRINCESS_SPRITE_HEIGHT; y >= princess_y; y--){
-          for(int x = princess_x; x < princess_x + PRINCESS_SPRITE_WIDTH; x++){
-              G8RTOS_WaitSemaphore(&sem_SPIA);
-              ST7789_DrawPixel(x, y, princess_sprite[i]);
-              G8RTOS_SignalSemaphore(&sem_SPIA);
-              i++;
-          }
+void eraseMario(int16_t old_mario_x, int16_t old_mario_y)
+{
+   G8RTOS_WaitSemaphore(&sem_SPIA);
+   for (int y = old_mario_y + MARIO_SPRITE_HEIGHT; y >= old_mario_y + 1; y--)
+   {
+      for (int x = old_mario_x; x < old_mario_x + MARIO_SPRITE_WIDTH; x++)
+      {
+         ST7789_DrawPixel(x, y, ST7789_BLACK);
       }
+   }
+   G8RTOS_SignalSemaphore(&sem_SPIA);
+
+   // Redraw any intersecting ladders
+   for (int i = 0; i < NUM_LADDERS; i++)
+   {
+      if (intersectsLadder(old_mario_x, old_mario_y, MARIO_SPRITE_WIDTH, MARIO_SPRITE_HEIGHT, &ladders[i]))
+      {
+         drawLadder(&ladders[i]);
+      }
+   }
 }
 
-void erasePrincess(int16_t old_mario_x, int16_t old_mario_y){
-    //erase princess sprite
-    for(int y = princess_y + PRINCESS_SPRITE_HEIGHT; y >= princess_y; y--){
-        for(int x = princess_x + PRINCESS_SPRITE_WIDTH; x >= princess_x; x--){
-            G8RTOS_WaitSemaphore(&sem_SPIA);
-            ST7789_DrawPixel(x, y, ST7789_BLACK);
-            G8RTOS_SignalSemaphore(&sem_SPIA);
-        }
-    }
+void drawDK()
+{
+   int i = 0;
+   for (int y = dk_y + DK_SPRITE_HEIGHT; y >= dk_y; y--)
+   {
+      for (int x = dk_x; x < dk_x + DK_SPRITE_WIDTH; x++)
+      {
+         G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_DrawPixel(x, y, dk_sprite[i]);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
+         i++;
+      }
+   }
 }
 
+void eraseDK()
+{
+   for (int y = dk_y + DK_SPRITE_HEIGHT; y >= dk_y; y--)
+   {
+      for (int x = dk_x; x < dk_x + DK_SPRITE_WIDTH; x++)
+      {
+         G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_DrawPixel(x, y, ST7789_BLACK);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
+      }
+   }
+}
+
+void drawPrincess()
+{
+   // draw princess sprite
+   int i = 0;
+   for (int y = princess_y + PRINCESS_SPRITE_HEIGHT; y > princess_y; y--)
+   {
+      for (int x = princess_x; x < princess_x + PRINCESS_SPRITE_WIDTH; x++)
+      {
+         G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_DrawPixel(x, y, princess_sprite[i]);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
+         i++;
+      }
+   }
+}
+
+void erasePrincess()
+{
+   // erase princess sprite
+   for (int y = princess_y + PRINCESS_SPRITE_HEIGHT; y > princess_y; y--)
+   {
+      for (int x = princess_x + PRINCESS_SPRITE_WIDTH; x >= princess_x; x--)
+      {
+         G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_DrawPixel(x, y, ST7789_BLACK);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
+      }
+   }
+}
+
+void drawBarrel(int16_t barrel_x, int16_t barrel_y)
+{
+   int i = 0;
+   // Draw barrel
+   for (int y = barrel_y + BARREL_SPRITE_HEIGHT; y >= barrel_y; y--)
+   {
+      for (int x = barrel_x; x < barrel_x + BARREL_SPRITE_WIDTH; x++)
+      {
+         G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_DrawPixel(x, y, barrel_sprite[i]);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
+         i++;
+      }
+   }
+
+   // Check and redraw any intersecting ladders
+   for (int i = 0; i < NUM_LADDERS; i++)
+   {
+      if (intersectsLadder(barrel_x, barrel_y, BARREL_SPRITE_WIDTH, BARREL_SPRITE_HEIGHT, &ladders[i]))
+      {
+         drawLadder(&ladders[i]);
+      }
+   }
+}
+
+void eraseBarrel(int16_t barrel_x, int16_t barrel_y)
+{
+   G8RTOS_WaitSemaphore(&sem_SPIA);
+   for (int y = barrel_y + BARREL_SPRITE_HEIGHT; y >= barrel_y; y--)
+   {
+      for (int x = barrel_x; x < barrel_x + BARREL_SPRITE_WIDTH; x++)
+      {
+         ST7789_DrawPixel(x, y, ST7789_BLACK);
+      }
+   }
+   G8RTOS_SignalSemaphore(&sem_SPIA);
+
+   // Redraw any intersecting ladders
+   for (int i = 0; i < NUM_LADDERS; i++)
+   {
+      if (intersectsLadder(barrel_x, barrel_y, BARREL_SPRITE_WIDTH, BARREL_SPRITE_HEIGHT, &ladders[i]))
+      {
+         drawLadder(&ladders[i]);
+      }
+   }
+}
+
+bool intersectsLadder(int16_t x, int16_t y, int16_t width, int16_t height, const Ladder *ladder)
+{
+   return (x < ladder->x + ladder->width &&
+           x + width > ladder->x &&
+           y < ladder->y_top &&
+           y + height > ladder->y_bottom);
+}
+
+void initLadders(void) {
+    // Update y_top values based on platform heights
+    ladders[1].y_top = getPlatformYAtX(&platforms[1], ladders[1].x);
+}
 /*********************************Helper Functions**********************************/
 
 /*************************************Threads***************************************/
 
 void Idle_Thread(void)
 {
-   while (1);
+   while (1)
+      ;
 }
 
 void MarioMove_Thread(void)
@@ -558,7 +636,6 @@ void MarioMove_Thread(void)
    volatile uint32_t joystick_vals;
    volatile uint16_t js_x, js_y;
    int16_t old_mario_x, old_mario_y;
-   bool on_platform = false;
    const int GRAVITY = 3;
    const float LADDER_MARGIN = 2;
    int8_t ladder_index = -1;
@@ -588,8 +665,15 @@ void MarioMove_Thread(void)
          if (js_y_add < 0.35 && js_y_add > -0.35)
             js_y_add = 0;
 
-         // Handle horizontal movement
-         mario_x -= js_x_add * MOVE_PIXELS;
+         // select mario sprite based on direction
+         if (js_x_add < 0)
+         {
+            mario_sprite = mario_right_sprite;
+         }
+         else if (js_x_add > 0)
+         {
+            mario_sprite = mario_left_sprite;
+         }
 
          // Constrain to screen bounds
          if (mario_x < 0)
@@ -606,10 +690,11 @@ void MarioMove_Thread(void)
 
             // Use margins for easier ladder grabbing
             if ((!ladders[i].is_broken &&
-                mario_center >= ladders[i].x - LADDER_MARGIN &&
-                mario_center <= ladders[i].x + ladders[i].width + LADDER_MARGIN &&
-                mario_y >= ladders[i].y_bottom &&
-                mario_y <= ladders[i].y_top) && !jump) // IGNORE LADDERS WHEN JUMPING
+                 mario_center >= ladders[i].x - LADDER_MARGIN &&
+                 mario_center <= ladders[i].x + ladders[i].width + LADDER_MARGIN &&
+                 mario_y >= ladders[i].y_bottom &&
+                 mario_y <= ladders[i].y_top) &&
+                !jump) // IGNORE LADDERS WHEN JUMPING
             {
                on_ladder = true;
                ladder_index = i;
@@ -619,22 +704,24 @@ void MarioMove_Thread(void)
          }
 
          // Handle vertical movement
-         if (on_ladder)
+         if (on_ladder && js_y_add != 0)
          {
-             jump = 0; // IGNORE JUMPS ON LADDER
             // On ladder: direct vertical control
-            //UARTprintf("js: %d\n", js_y_add);
+            // UARTprintf("js: %d\n", js_y_add);
+            // redraw ladder
+            //drawLadder(&ladders[ladder_index]);
+
             if (js_y_add > 0)
             {
-               mario_y += 2;
+               mario_y += 1;
             }
             else if (js_y_add < 0)
             {
-               mario_y -= 2;
+               mario_y -= 1;
             }
 
-            // Only constrain to ladder if above platform
-            if (mario_y > platforms[mario_platform].y + platforms[mario_platform].height)
+            // Only constrain to ladder if between platforms
+            if (mario_y > platforms[mario_platform].y + platforms[mario_platform].height && mario_y < platforms[mario_platform + 1].y + platforms[mario_platform + 1].height)
             {
                // Calculate ladder bounds relative to Mario's center
                int16_t ladder_left = ladders[ladder_index].x;
@@ -643,13 +730,15 @@ void MarioMove_Thread(void)
                // Keep Mario centered on the ladder
                mario_x = ladder_center - (mario_w / 2);
             }
+
             // allow to get off ladder and update platform
             int16_t next_top_platform = -1;
             if (mario_platform < NUM_PLATFORMS - 1)
             {
                next_top_platform = getPlatformYAtX(&platforms[mario_platform + 1], mario_x);
+               drawPlatform(&platforms[mario_platform]);
             }
-            int16_t next_bottom_platform = -1;
+            int16_t next_bottom_platform = getPlatformYAtX(&platforms[0], mario_x);
             if (mario_platform > 0)
             {
                next_bottom_platform = getPlatformYAtX(&platforms[mario_platform - 1], mario_x);
@@ -663,75 +752,84 @@ void MarioMove_Thread(void)
                mario_x -= js_x_add;
             }
             // if move down:
-            else if (mario_y == next_bottom_platform && next_bottom_platform != -1)
+            else if (mario_y <= next_bottom_platform)
             {
-               mario_platform--;
+               if(mario_platform != 0)
+               {
+                  mario_platform--;
+               }
+               else
+               {
+                  mario_platform = 0;
+                  drawPlatform(&platforms[0]);
+               }
                mario_y = next_bottom_platform;
                mario_x -= js_x_add;
             }
          }
-         else
+         // handle jump, should go 6 pixels in air and then come down
+         else if (jump && !on_ladder)
          {
-            mario_x -= js_x_add;
-            // mario_y = getPlatformYAtX(&platforms[mario_platform], mario_x);
-            if(falling == true){
-                uint16_t lower_bound = getPlatformYAtX(&platforms[mario_platform - 1], mario_x);
-                if(mario_y > lower_bound){
-                    mario_y -= GRAVITY;
-                }
-                else{
-                    falling == false;
-                    mario_y = lower_bound;
-                }
-            }
-            if(!falling && mario_platform != 0){
-                if(getPlatformYAtX(&platforms[mario_platform], mario_x) == -1) {
-                    mario_y -= GRAVITY;
-                    falling = true;
-                }
-               else{
-                   mario_y = getPlatformYAtX(&platforms[mario_platform], mario_x);
-               }
-            }
-
-
-            //handle jump, should go 6 pixels in air and then come down
-            //UARTprintf("JUMP? %d\n", jump);
-            if (jump)
+            mario_up++;
+            if (mario_up >= MAX_JUMP_HEIGHT)
             {
-               mario_y += JUMP_PIXELS;
-               mario_up++;
-               if (mario_up == MAX_JUMP_HEIGHT)
+               mario_y -= GRAVITY;
+               if (mario_y <= getPlatformYAtX(&platforms[mario_platform], mario_x))
                {
                   jump = 0;
+                  mario_up = 0;
+                  mario_y = getPlatformYAtX(&platforms[mario_platform], mario_x) + 1;
+                  drawPlatform(&platforms[mario_platform]);
                }
             }
             else
             {
-               //mario_y -= GRAVITY;
-               mario_up = 0;
+               mario_y += JUMP_PIXELS;
             }
-
-            if (checkCollision())
+         }
+         else
+         {
+            mario_x -= js_x_add * MOVE_PIXELS;
+            // UARTprintf("js value: %d\n", js_x_add);
+            if (falling == true)
             {
-               // Clear lives display
-               G8RTOS_WaitSemaphore(&sem_SPIA);
-               ST7789_WriteScore(7 * 10 + 10, 32, lives, ST7789_BLACK);
-               G8RTOS_SignalSemaphore(&sem_SPIA);
-
+               uint16_t lower_bound = 20;
+               if (mario_platform == 0)
+               {
+                  lower_bound = 20;
+               }
+               else
+               {
+                  lower_bound = getPlatformYAtX(&platforms[mario_platform - 1], mario_x);
+               }
+               if (mario_y > lower_bound)
+               {
+                  mario_y--;
+                  UARTprintf("mario_y: %d\n", mario_y);
+               }
+               else
+               {
+                  falling == false;
+                  mario_y = lower_bound;
+               }
+            }
+            if (!falling && mario_platform != 0)
+            {
+               if (getPlatformYAtX(&platforms[mario_platform], mario_x) == -1)
+               {
+                  mario_y -= GRAVITY;
+                  falling = true;
+               }
+               else
+               {
+                  mario_y = getPlatformYAtX(&platforms[mario_platform], mario_x);
+               }
+            }
+            if (checkCollision() && !collided)
+            {
+               // UARTprintf("COLLIDED\n");
+               collided = true;
                lives--;
-
-               // Erase Mario
-               eraseMario(old_mario_x, old_mario_y);
-
-               // Reset Mario position
-               mario_x = 40;
-               mario_y = 20;
-               mario_platform = 0;
-
-               // Clear barrels
-               clearBarrels();
-               initBarrels();
 
                if (lives == 0)
                {
@@ -745,39 +843,24 @@ void MarioMove_Thread(void)
             }
          }
 
-            // Constrain vertical position to screen bounds
-            /*
-         if (mario_y < 0)
-            mario_y = 0;
-         if (mario_y > Y_MAX - mario_h)
-            mario_y = Y_MAX - mario_h;
-            */
-
-            // If position changed, update display
-            if (old_mario_x != mario_x || old_mario_y != mario_y)
+         // If position changed, update display
+         if (old_mario_x != mario_x || old_mario_y != mario_y)
+         {
+            // Check for level completion
+            if (mario_y >= 200)
             {
-               // Check for level completion
-               if (mario_y >= 200)
-               {
-                  transition = 1;
-                  win = 1;
-                  currentState = LEVELWON;
-               }
-               else
-               {
-                  // Erase old position
-                  //G8RTOS_WaitSemaphore(&sem_SPIA);
-                  //ST7789_DrawRectangle(old_mario_x, old_mario_y, mario_w, mario_h, ST7789_BLACK);
-                  //G8RTOS_SignalSemaphore(&sem_SPIA);
-                   eraseMario(old_mario_x, old_mario_y);
+               transition = 1;
+               win = 1;
+               currentState = LEVELWON;
+            }
+            else
+            {
+               // Erase old position
+               eraseMario(old_mario_x, old_mario_y);
 
-                  // Draw new position
-                  //G8RTOS_WaitSemaphore(&sem_SPIA);
-                  //ST7789_DrawRectangle(mario_x, mario_y, mario_w, mario_h, ST7789_RED);
-                  //G8RTOS_SignalSemaphore(&sem_SPIA);
-                  drawMario();
-               }
-
+               // Draw new position
+               drawMario(old_mario_x, old_mario_y);
+            }
          }
       }
       else
@@ -816,9 +899,8 @@ void Read_Buttons()
 
       else if (currentState == GAMEPLAY)
       {
-          if (buttons == SW1)
-              jump = 1;
-
+         if (buttons == SW1)
+            jump = 1;
       }
       else if (currentState == GAMEOVER || currentState == LEVELWON)
       {
@@ -862,13 +944,7 @@ void Draw_Screen(void)
       ST7789_Fill(ST7789_BLACK);
       G8RTOS_SignalSemaphore(&sem_SPIA);
       transition = 0;
-
-      if (currentState == GAMEPLAY)
-      {
-         G8RTOS_WaitSemaphore(&sem_SPIA);
-         ST7789_DrawRectangle(mario_x, mario_y, mario_w, mario_h, ST7789_RED);
-         G8RTOS_SignalSemaphore(&sem_SPIA);
-      }
+      draw_static_elements = false;
    }
    if (currentState == START)
    {
@@ -879,10 +955,11 @@ void Draw_Screen(void)
       // reset mario
       mario_x = 40;
       mario_y = 20;
+      mario_sprite = mario_left_sprite;
       // reset barrels
       clearBarrels();
       initBarrels();
-      //!!!!!!!!!!!! NEED SOME WAY TO CLEAR FIFO !!!!!!!!!!
+      initLadders();
 
       // draw start screen
       G8RTOS_WaitSemaphore(&sem_SPIA);
@@ -905,49 +982,61 @@ void Draw_Screen(void)
    {
       // draw gameplay screen, only static stuff?
       // draw score
-      G8RTOS_WaitSemaphore(&sem_SPIA);
-      ST7789_WriteString(10, 20, "SCORE ", ST7789_WHITE);
-      G8RTOS_SignalSemaphore(&sem_SPIA);
+      if (collided == true)
+      {
+         G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_Fill(ST7789_BLACK);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
+         collided = false;
+         initBarrels();
+         mario_x = 40;
+         mario_y = 20;
+         mario_platform = 0;
+         drawMario(0, 0);
+         draw_static_elements = false;
+      }
 
-      G8RTOS_WaitSemaphore(&sem_SPIA);
-      ST7789_WriteScore(7 * 10 + 10, 20, score, ST7789_WHITE);
-      G8RTOS_SignalSemaphore(&sem_SPIA);
+      if (!draw_static_elements)
+      {
+         initLadders();
+         draw_static_elements = true;
+         G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_WriteString(10, 20, "SCORE ", ST7789_WHITE);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
 
-      // draw lives
-      G8RTOS_WaitSemaphore(&sem_SPIA);
-      ST7789_WriteString(10, 32, "LIVES ", ST7789_WHITE);
-      G8RTOS_SignalSemaphore(&sem_SPIA);
+         G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_WriteScore(7 * 10 + 10, 20, score, ST7789_WHITE);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
 
-      G8RTOS_WaitSemaphore(&sem_SPIA);
-      ST7789_WriteScore(7 * 10 + 10, 32, lives, ST7789_WHITE);
-      G8RTOS_SignalSemaphore(&sem_SPIA);
+         // draw lives
+         G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_WriteString(10, 32, "LIVES ", ST7789_WHITE);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
 
-      // draw level
-      G8RTOS_WaitSemaphore(&sem_SPIA);
-      ST7789_WriteString(10, 44, "LEVEL: ", ST7789_WHITE);
-      G8RTOS_SignalSemaphore(&sem_SPIA);
+         G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_WriteScore(7 * 10 + 10, 32, lives, ST7789_WHITE);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
 
-      G8RTOS_WaitSemaphore(&sem_SPIA);
-      ST7789_WriteScore(7 * 10 + 10, 44, level, ST7789_WHITE);
-      G8RTOS_SignalSemaphore(&sem_SPIA);
+         // draw level
+         G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_WriteString(10, 44, "LEVEL: ", ST7789_WHITE);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
 
+         G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_WriteScore(7 * 10 + 10, 44, level, ST7789_WHITE);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
+
+         // draw platforms
+         drawAllPlatforms();
+         // draw ladders
+         drawAllLadders();
+         // draw princess
+         drawPrincess();
+         // draw dk
+         drawDK();
+      }
       // draw bonus score !!!!!!!!!!! LATER FEATURE !!!!!!!!!!!!!
 
-      // draw platforms
-      drawAllPlatforms();
-      // draw ladders
-      drawAllLadders();
-
-      // draw princess
-      //G8RTOS_WaitSemaphore(&sem_SPIA);
-      //ST7789_DrawRectangle(princess_x, princess_y, princess_w, princess_h, ST7789_PINK);
-      //G8RTOS_SignalSemaphore(&sem_SPIA);
-      drawPrincess();
-      // draw dk
-      //G8RTOS_WaitSemaphore(&sem_SPIA);
-      //ST7789_DrawRectangle(dk_x, dk_y, dk_w, dk_h, ST7789_BROWN);
-      //G8RTOS_SignalSemaphore(&sem_SPIA);
-      drawDK();
       // draw hazards, rn barrels other stuff later if time, fireballs?
       drawBarrels();
 
@@ -1005,7 +1094,7 @@ void Generate_Barrel(void)
             {
                // UARTprintf("GENERATING BARRREL: %d\n", i);
                barrels[i].x = dk_x + dk_w + 1;
-               barrels[i].y = dk_y;
+               barrels[i].y = dk_y + 2;
                barrels[i].active = 1;
                barrels[i].platform_index = 6; // DK's platform
                barrels[i].falling = false;
@@ -1018,6 +1107,19 @@ void Generate_Barrel(void)
       }
    }
 }
+
+// void DAC_Timer_Handler() {
+//     //uint32_t output = Goertzel_ReadSample(MIC_FIFO);
+//     // clear the timer interrupt
+//     TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
+//
+//     // read next output sample
+//     uint32_t output = (current_volume)*(get_next_sample());
+//
+//
+//     // write the output value to the dac
+//     MutimodDAC_Write(DAC_OUT_REG,output);
+// }
 
 /*******************************Aperiodic Threads***********************************/
 
