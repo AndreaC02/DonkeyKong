@@ -9,7 +9,6 @@
 /************************************Includes***************************************/
 
 #include <G8RTOS/G8RTOS.h>
-#include "music.h"
 
 /************************************Includes***************************************/
 
@@ -30,10 +29,10 @@ typedef enum {
 } PlatformType;
 
 typedef struct {
-   uint16_t x;         // starting x position
-   uint16_t y;         // starting y position
-   uint16_t width;     // width of platform
-   uint16_t height;    // height/thickness of platform
+   uint8_t x;         // starting x position
+   uint8_t y;         // starting y position
+   uint8_t width;     // width of platform
+   uint8_t height;    // height/thickness of platform
    uint16_t slope;     // slope percentage (0 for flat)
    PlatformType type;  // type of platform
    uint16_t color;     // color of platform
@@ -43,6 +42,7 @@ typedef struct {
    uint16_t x;          // x position
    uint16_t y_bottom;   // bottom y position
    uint16_t y_top;      // top y position
+   uint8_t lower_platform, upper_platform; // indices of platforms
    uint16_t width;      // width of ladder
    uint16_t rung_space; // space between rungs
    bool is_broken;      // whether ladder is broken (can't be climbed)
@@ -186,13 +186,14 @@ void Read_Buttons(void);
 void Get_Joystick(void);
 void Draw_Screen(void);
 void Generate_Barrel(void);
-//void DAC_Timer_Handler(void);
+void Update_Timer(void);
 
 /********************************Periodic Threads***********************************/
 
 /*******************************Aperiodic Threads***********************************/
 
 void GPIOE_Handler(void);
+void UART4_Handler(void);
 
 /*******************************Aperiodic Threads***********************************/
 
