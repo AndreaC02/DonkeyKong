@@ -46,7 +46,7 @@ bool collided = false;
 
 // Mario coords
 int16_t mario_x = 40;
-int16_t mario_y = 20;
+int16_t mario_y = 22;
 int16_t mario_w = MARIO_SPRITE_WIDTH;
 int16_t mario_h = MARIO_SPRITE_HEIGHT;
 uint8_t mario_up = 0;
@@ -67,6 +67,13 @@ int16_t princess_y = 205;
 int16_t princess_w = PRINCESS_SPRITE_WIDTH;
 int16_t princess_h = PRINCESS_SPRITE_HEIGHT;
 
+#define MIN_PLATFORM_Y_SPACING 25  
+#define MAX_SLOPE 6               
+#define PLATFORM_COUNT 8          
+#define LADDERS_PER_LEVEL 2      
+#define MIN_LADDER_X 35          
+#define MAX_LADDER_X 200         
+#define LADDER_SPACING 34 
 #define PLATFORM_WIDTH 200
 // Array of Platforms
 Platform platforms[] = {
@@ -78,7 +85,6 @@ Platform platforms[] = {
     {35, 70, PLATFORM_WIDTH, 5, 4, SLOPE_RIGHT_DOWN, ST7789_LIGHTRED}, // y2
     {0, 110, PLATFORM_WIDTH, 5, 4, SLOPE_LEFT_DOWN, ST7789_LIGHTRED},
     {35, 135, PLATFORM_WIDTH, 5, 4, SLOPE_RIGHT_DOWN, ST7789_LIGHTRED}, // y2 = 13
-    //{40, 170, PLATFORM_WIDTH, 5, 15, SLOPE_LEFT_DOWN, ST7789_LIGHTRED},
 
     // Top DK platform - flat section followed by slope
     {100, 170, 100, 5, 4, SLOPE_LEFT_DOWN, ST7789_LIGHTRED}, // Sloped section
@@ -672,6 +678,88 @@ void addJumpPoints()
       jumped_barrel = false;
    }
 }
+
+void generateRandomLadders(void) {
+    // Seed random number generator
+    srand(time(NULL));
+    
+    // Generate two ladders between each main platform
+    int ladder_index = 0;
+    // Generate ladders for main platforms (excluding DK's sloped platform)
+    for (int i = 0; i < PLATFORM_COUNT - 4; i++) {
+        // Calculate available range for first ladder
+        int first_max = MAX_LADDER_X - LADDER_SPACING;  // Leave room for second ladder
+        bool broken = (rand() % 2) ? true : false;
+
+        // First ladder
+        int first_x = MIN_LADDER_X + (rand() % (first_max - MIN_LADDER_X));
+        ladders[ladder_index++] = (Ladder){
+            .x = first_x,
+            .width = LADDER_WIDTH,
+            .rung_space = 8,
+            .is_broken = broken,
+            .color = ST7789_YELLOW,
+            .lower_platform = i,
+            .upper_platform = i + 1
+        };
+        
+        // Second ladder - must be at least LADDER_SPACING pixels away from first
+        int second_min = first_x + LADDER_SPACING;
+        int second_max = MAX_LADDER_X;
+        if (second_min < MAX_LADDER_X) {
+            int second_x = second_min + (rand() % (second_max - second_min));
+            if (second_x > MAX_LADDER_X) second_x = MAX_LADDER_X - LADDER_WIDTH;
+            
+            ladders[ladder_index++] = (Ladder){
+                .x = second_x,
+                .width = LADDER_WIDTH,
+                .rung_space = 8,
+                .is_broken = !broken,
+                .color = ST7789_YELLOW,
+                .lower_platform = i,
+                .upper_platform = i + 1
+            };
+        }
+    }
+
+    //Add ladder between 4 & 5 and 4 & 6
+    int first_max = MAX_LADDER_X - LADDER_SPACING;  // Leave room for second ladder
+   bool broken = (rand() % 2) ? true : false;
+
+   // First ladder
+   int first_x = MIN_LADDER_X + (rand() % (first_max - MIN_LADDER_X));
+   ladders[ladder_index++] = (Ladder){
+      .x = first_x,
+      .width = LADDER_WIDTH,
+      .rung_space = 8,
+      .is_broken = broken,
+      .color = ST7789_YELLOW,
+      .lower_platform = 4,
+      .upper_platform = 6
+   };
+   
+   // Second ladder - must be at least LADDER_SPACING pixels away from first
+   int second_min = first_x + LADDER_SPACING;
+   int second_max = MAX_LADDER_X;
+   if (second_min < MAX_LADDER_X) {
+      int second_x = second_min + (rand() % (second_max - second_min));
+      if (second_x > MAX_LADDER_X) second_x = MAX_LADDER_X - LADDER_WIDTH;
+      
+      ladders[ladder_index++] = (Ladder){
+            .x = second_x,
+            .width = LADDER_WIDTH,
+            .rung_space = 8,
+            .is_broken = !broken,
+            .color = ST7789_YELLOW,
+            .lower_platform = 4,
+            .upper_platform = 5
+      };
+   }
+
+    
+    // Add the final ladder from DK's platform to princess platform
+    ladders[ladder_index] = (Ladder){90, 170, 200, 6, 7, LADDER_WIDTH, 8, false, ST7789_YELLOW};
+}
 /*********************************Helper Functions**********************************/
 
 /*************************************Threads***************************************/
@@ -953,8 +1041,10 @@ void MarioMove_Thread(void)
             if (mario_y >= 200)
             {
                score += (level_timer * 100 + 1000 + level_score);
+               level++;
                transition = 1;
                win = 1;
+               generateRandomLadders();
                currentState = LEVELWON;
             }
             else
@@ -1006,12 +1096,32 @@ void Read_Buttons()
          if (buttons == SW1)
             jump = 1;
       }
-      else if (currentState == GAMEOVER || currentState == LEVELWON)
+      else if (currentState == GAMEOVER)
       {
          if (buttons == SW1 || buttons == SW2 || buttons == SW3 || buttons == SW4)
          {
             transition = 1;
             currentState = START;
+         }
+      }
+      else if (currentState == LEVELWON)
+      {
+         if (buttons == SW1 || buttons == SW2 || buttons == SW3 || buttons == SW4)
+         {
+            if(level == 3)
+            {
+               if (score > high_score)
+               {
+                  high_score = score;
+               }
+               transition = 1;
+               currentState = START;
+            }
+            else
+            {
+            transition = 1;
+            currentState = GAMEPLAY;
+            }
          }
       }
 
@@ -1049,6 +1159,22 @@ void Draw_Screen(void)
       G8RTOS_SignalSemaphore(&sem_SPIA);
       transition = 0;
       draw_static_elements = false;
+      // reset necessary variables
+      win = 0;
+      level_score = 0;
+      score = 0;
+      level_timer = 500;
+      jumped_barrel = false;
+      // reset mario
+      mario_x = 40;
+      mario_y = 20;
+      mario_platform = 0;
+      mario_sprite = mario_left_sprite;
+      // reset barrels
+      clearBarrels();
+      initBarrels();
+      generateRandomLadders();
+      initLadders();
    }
    if (currentState == START)
    {
@@ -1059,9 +1185,11 @@ void Draw_Screen(void)
       score = 0;
       level_timer = 500;
       jumped_barrel = false;
+      level = 0;
       // reset mario
       mario_x = 40;
       mario_y = 20;
+      mario_platform = 0;
       mario_sprite = mario_left_sprite;
       // reset barrels
       clearBarrels();
@@ -1087,8 +1215,6 @@ void Draw_Screen(void)
    }
    else if (currentState == GAMEPLAY)
    {
-      // draw gameplay screen, only static stuff?
-      // draw score
       if (collided == true)
       {
          G8RTOS_WaitSemaphore(&sem_SPIA);
@@ -1165,17 +1291,25 @@ void Draw_Screen(void)
       ST7789_WriteString(X_MAX / 2 - 25, string_y, "LEVEL WON!", ST7789_WHITE);
       G8RTOS_SignalSemaphore(&sem_SPIA);
 
-      G8RTOS_WaitSemaphore(&sem_SPIA);
-      ST7789_WriteString(X_MAX / 2 - 50, string_y + 22, "FINAL SCORE ", ST7789_WHITE);
-      G8RTOS_SignalSemaphore(&sem_SPIA);
+      if(level < 3){
+         win = 0;
+         G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_WriteString(X_MAX / 2 - 90, string_y + 22, "PRESS ANY SW TO CONTINUE", ST7789_WHITE);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
+      }
+      else{
+          G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_WriteString(X_MAX / 2 - 50, string_y + 22, "FINAL SCORE ", ST7789_WHITE);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
 
-      G8RTOS_WaitSemaphore(&sem_SPIA);
-      ST7789_WriteScore(X_MAX / 2 - 50 + (10 * 10), string_y + 22, score, ST7789_WHITE);
-      G8RTOS_SignalSemaphore(&sem_SPIA);
+         G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_WriteScore(X_MAX / 2 - 50 + (10 * 10), string_y + 22, score, ST7789_WHITE);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
 
-      G8RTOS_WaitSemaphore(&sem_SPIA);
-      ST7789_WriteString(X_MAX / 2 - 90, string_y + 44, "PRESS ANY SW TO RESTART", ST7789_WHITE);
-      G8RTOS_SignalSemaphore(&sem_SPIA);
+         G8RTOS_WaitSemaphore(&sem_SPIA);
+         ST7789_WriteString(X_MAX / 2 - 90, string_y + 44, "PRESS ANY SW TO RESTART", ST7789_WHITE);
+         G8RTOS_SignalSemaphore(&sem_SPIA);
+      }
    }
    else if (currentState == GAMEOVER)
    {
