@@ -33,7 +33,7 @@ int16_t current_volume = 0xFFF;
 
 uint8_t SLOPE_ADJUST = 50;
 uint8_t MOVE_PIXELS = 2;
-uint8_t MOVE_BARRELS = 3;
+//uint8_t MOVE_BARRELS = 3;
 uint8_t JUMP_PIXELS = 1;
 uint8_t MAX_JUMP_HEIGHT = 15;
 
@@ -127,6 +127,7 @@ Ladder ladders[] = {
 Barrel barrels[MAX_BARRELS];
 uint8_t active_barrel_count = 0;
 uint8_t max_barrels_level[3] = {4, 7, 10};
+uint8_t move_barrels_level[3] = {3, 5, 7};
 
 // #define SIGNAL_STEPS (sizeof(music) / sizeof(music))
 // uint16_t dac_step = 0;
@@ -261,6 +262,7 @@ void initBarrels()
    for (int i = 0; i < MAX_BARRELS; i++)
    {
       barrels[i].active = false;
+      barrels[i].jumped = false;
    }
    active_barrel_count = 0;
 }
@@ -302,18 +304,18 @@ void drawBarrels()
                {
                   barrels[i].platform_index--;
                   // Move horizontally along platform
-                  barrels[i].x += (MOVE_BARRELS)*barrels[i].dir;
+                  barrels[i].x += (move_barrels_level[level])*barrels[i].dir;
                }
                // Handle top platform
                else if (barrels[i].platform_index == 6)
                {
-                  barrels[i].x += (MOVE_BARRELS * barrels[i].dir);
+                  barrels[i].x += (move_barrels_level[level] * barrels[i].dir);
                }
                // Handle Bottom platform
                else if (barrels[i].platform_index == 0)
                {
                   // Bottom platform - check if off screen
-                  barrels[i].x += (MOVE_BARRELS * barrels[i].dir);
+                  barrels[i].x += (move_barrels_level[level] * barrels[i].dir);
                   if (barrels[i].x <= 0 || barrels[i].x + BARREL_SPRITE_WIDTH >= X_MAX)
                   {
                      barrels[i].active = false;
@@ -327,7 +329,7 @@ void drawBarrels()
                else
                {
                   // Move horizontally
-                  barrels[i].x += (MOVE_BARRELS * barrels[i].dir);
+                  barrels[i].x += (move_barrels_level[level] * barrels[i].dir);
 
                   // Get current platform y at barrel's x position
                   int16_t platform_y = getPlatformYAtX(&platforms[barrels[i].platform_index], barrels[i].x);
@@ -656,36 +658,30 @@ void initLadders(void)
 
 void addJumpPoints()
 {
-   // Check if Mario is above a barrel and hasn't gotten points for this jump yet
-   if (!jumped_barrel && jump)
-   {
-      for (int i = 0; i < MAX_BARRELS; i++)
-      {
-         if (barrels[i].active)
-         {
-            // If Mario is above a barrel
-            if (mario_y > barrels[i].y &&
-                mario_x < barrels[i].x + BARREL_SPRITE_WIDTH &&
-                mario_x + mario_w > barrels[i].x)
+    // Check if Mario is jumping
+    if (jump)
+    {
+        for (int i = 0; i < MAX_BARRELS; i++)
+        {
+            if (barrels[i].active && !barrels[i].jumped)  // Only check barrels not jumped yet
             {
-               level_score += 100;
-               jumped_barrel = true;
-               break;
+                // If Mario is above a barrel
+                if (mario_y > barrels[i].y &&
+                    mario_x < barrels[i].x + BARREL_SPRITE_WIDTH &&
+                    mario_x + mario_w > barrels[i].x)
+                {
+                    level_score += 100;  // Add points for this barrel
+                    barrels[i].jumped = true;  // Mark this specific barrel as jumped
+                }
             }
-         }
-      }
-   }
-   // Reset jumped_barrel when Mario lands
-   if (!jump)
-   {
-      jumped_barrel = false;
-   }
+        }
+    }
 }
 
 void generateRandomLadders(void)
 {
    // Seed random number generator
-   srand(time(NULL));
+   //srand(time(NULL));
 
    // Generate two ladders between each main platform
    int ladder_index = 0;
@@ -1142,7 +1138,6 @@ void Draw_Screen(void)
       // reset necessary variables
       win = 0;
       level_score = 0;
-      score = 0;
       level_timer = 500;
       jumped_barrel = false;
       // reset mario
@@ -1333,6 +1328,7 @@ void Generate_Barrel(void)
                barrels[i].falling = false;
                barrels[i].dir = 1; // Start moving Right
                barrels[i].err = platforms[barrels[i].platform_index].width / 2;
+               barrels[i].jumped = false;
                active_barrel_count++;
                break;
             }
@@ -1401,7 +1397,7 @@ void UART4_Handler()
       MutimodDAC_Write(DAC_OUT_REG, output);
    }
 
-   // UARTprintf("current note: %d", current_note);
+   //UARTprintf("current note: %d", current_note);
 
    UARTIntClear(UART4_BASE, status);
 }

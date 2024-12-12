@@ -18,6 +18,7 @@ static void multimod_init() {
     ST7789_Init();
     PCA9956b_Init();
     UART_Init();
+    UART_BeagleBone_Init();
     MultimodMic_Init();
     MutimodDAC_Init();
     MultimodButtons_Init();

@@ -34,7 +34,6 @@ void UART_Init() {
     SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
 
     // Configure UART0 pins on port A
-
     GPIOPinConfigure(GPIO_PA0_U0RX);
     GPIOPinConfigure(GPIO_PA1_U0TX);
     GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);
@@ -42,12 +41,45 @@ void UART_Init() {
     UARTFIFODisable(UART0_BASE);
 
     // Set UART clock source
-    UARTClockSourceSet(UART0_BASE, UART_CLOCK_PIOSC);
+    UARTClockSourceSet(UART0_BASE, UART_CLOCK_SYSTEM);
     // Configure UART baud rate
 
-    UARTStdioConfig(0, 115200, 16000000);
+    UARTStdioConfig(0, 115200, SysCtlClockGet());
 
+}
 
+// UART_BeagleBone_Init
+// Initializes UART serial communication with Beaglebone
+// Return: void
+void UART_BeagleBone_Init(void) {
+    // Enable peripherals
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_UART4);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);
+
+    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_UART4) ||
+            !SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOC)){}
+
+    // Configure UART4 pins
+    GPIOPinConfigure(GPIO_PC4_U4RX);
+    GPIOPinConfigure(GPIO_PC5_U4TX);
+    GPIOPinTypeUART(GPIO_PORTC_BASE, GPIO_PIN_4 | GPIO_PIN_5);
+
+    // Configure UART4 settings
+    UARTFIFOEnable(UART4_BASE);
+    UARTFIFOLevelSet(UART4_BASE, UART_FIFO_TX7_8, UART_FIFO_RX1_8);
+
+    UARTClockSourceSet(UART4_BASE, UART_CLOCK_SYSTEM);
+    UARTConfigSetExpClk(UART4_BASE,
+                        SysCtlClockGet(),
+                        115200,
+                        (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));
+
+    // Enable UART4 RX interrupts
+    UARTIntClear(UART4_BASE,  INT_UART4);
+    UARTIntEnable(UART4_BASE, UART_INT_RX | UART_INT_RT);
+    UARTIntClear(UART4_BASE,  INT_UART4);
+
+    UARTEnable(UART4_BASE);
 }
 
 /********************************Public Functions***********************************/

@@ -57,6 +57,7 @@ typedef struct {
     bool falling;
     uint8_t platform_index;  // which platform the barrel is currently on
     int16_t err;
+    bool jumped;
 } Barrel;
 
 
