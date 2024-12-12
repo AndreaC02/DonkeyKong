@@ -13,22 +13,22 @@
 #include <time.h>
 #include "driverlib/timer.h"
 /*********************************Global Variables**********************************/
-GameState currentState = GAMEPLAY; // START
+GameState currentState = START;
 uint32_t score = 0;
 uint32_t level_timer = 500;
 bool jumped_barrel = false;
 uint32_t high_score = 0;
 uint32_t level_score = 0;
 uint8_t lives = 3;
-uint8_t level = 1;
+uint8_t level = 0;
 bool transition = 0;
 bool win = 0;
 bool draw_static_elements = false;
 
 // Audio stuff
-uint8_t current_note = 0;  
-bool note_ready = false; 
-#define SAMPLE_RATE 8000 
+uint8_t current_note = 0;
+bool note_ready = false;
+#define SAMPLE_RATE 8000
 int16_t current_volume = 0xFFF;
 
 uint8_t SLOPE_ADJUST = 50;
@@ -67,13 +67,13 @@ int16_t princess_y = 205;
 int16_t princess_w = PRINCESS_SPRITE_WIDTH;
 int16_t princess_h = PRINCESS_SPRITE_HEIGHT;
 
-#define MIN_PLATFORM_Y_SPACING 25  
-#define MAX_SLOPE 6               
-#define PLATFORM_COUNT 8          
-#define LADDERS_PER_LEVEL 2      
-#define MIN_LADDER_X 35          
-#define MAX_LADDER_X 200         
-#define LADDER_SPACING 34 
+#define MIN_PLATFORM_Y_SPACING 25
+#define MAX_SLOPE 6
+#define PLATFORM_COUNT 8
+#define LADDERS_PER_LEVEL 2
+#define MIN_LADDER_X 35
+#define MAX_LADDER_X 200
+#define LADDER_SPACING 34
 #define PLATFORM_WIDTH 200
 // Array of Platforms
 Platform platforms[] = {
@@ -123,9 +123,10 @@ Ladder ladders[] = {
 #define NUM_PLATFORMS (sizeof(platforms) / sizeof(Platform))
 #define NUM_LADDERS (sizeof(ladders) / sizeof(Ladder))
 
-#define MAX_BARRELS 4
+#define MAX_BARRELS 10
 Barrel barrels[MAX_BARRELS];
 uint8_t active_barrel_count = 0;
+uint8_t max_barrels_level[3] = {4, 7, 10};
 
 // #define SIGNAL_STEPS (sizeof(music) / sizeof(music))
 // uint16_t dac_step = 0;
@@ -317,8 +318,10 @@ void drawBarrels()
                   {
                      barrels[i].active = false;
                      active_barrel_count--;
+                     eraseBarrel(old_x, old_y);
                      continue;
                   }
+                  drawPlatform(&platforms[0]);
                }
                // handle all other platforms
                else
@@ -380,7 +383,7 @@ bool checkCollision()
    int16_t mario_bottom = mario_y;
 
    // Check collision with each active barrel
-   for (int i = 0; i < MAX_BARRELS; i++)
+   for (int i = 0; i < max_barrels_level[level]; i++)
    {
       if (!barrels[i].active)
       {
@@ -390,7 +393,7 @@ bool checkCollision()
       // Rectangle collision bounds for current barrel
       int16_t barrel_left = barrels[i].x;
       int16_t barrel_right = barrels[i].x + BARREL_SPRITE_WIDTH;
-      int16_t barrel_top = barrels[i].y + BARREL_SPRITE_HEIGHT; // Adding size because y increases downward
+      int16_t barrel_top = barrels[i].y + BARREL_SPRITE_HEIGHT;
       int16_t barrel_bottom = barrels[i].y;
 
       // First check if rectangles do NOT overlap
@@ -679,86 +682,63 @@ void addJumpPoints()
    }
 }
 
-void generateRandomLadders(void) {
-    // Seed random number generator
-    srand(time(NULL));
-    
-    // Generate two ladders between each main platform
-    int ladder_index = 0;
-    // Generate ladders for main platforms (excluding DK's sloped platform)
-    for (int i = 0; i < PLATFORM_COUNT - 4; i++) {
-        // Calculate available range for first ladder
-        int first_max = MAX_LADDER_X - LADDER_SPACING;  // Leave room for second ladder
-        bool broken = (rand() % 2) ? true : false;
+void generateRandomLadders(void)
+{
+   // Seed random number generator
+   srand(time(NULL));
 
-        // First ladder
-        int first_x = MIN_LADDER_X + (rand() % (first_max - MIN_LADDER_X));
-        ladders[ladder_index++] = (Ladder){
-            .x = first_x,
-            .width = LADDER_WIDTH,
-            .rung_space = 8,
-            .is_broken = broken,
-            .color = ST7789_YELLOW,
-            .lower_platform = i,
-            .upper_platform = i + 1
-        };
-        
-        // Second ladder - must be at least LADDER_SPACING pixels away from first
-        int second_min = first_x + LADDER_SPACING;
-        int second_max = MAX_LADDER_X;
-        if (second_min < MAX_LADDER_X) {
-            int second_x = second_min + (rand() % (second_max - second_min));
-            if (second_x > MAX_LADDER_X) second_x = MAX_LADDER_X - LADDER_WIDTH;
-            
-            ladders[ladder_index++] = (Ladder){
-                .x = second_x,
-                .width = LADDER_WIDTH,
-                .rung_space = 8,
-                .is_broken = !broken,
-                .color = ST7789_YELLOW,
-                .lower_platform = i,
-                .upper_platform = i + 1
-            };
-        }
-    }
+   // Generate two ladders between each main platform
+   int ladder_index = 0;
+   // Generate ladders for main platforms (excluding DK's sloped platform)
+   for (int i = 0; i < PLATFORM_COUNT - 4; i++)
+   {
+      // Calculate available range for first ladder
+      int first_max = MAX_LADDER_X - LADDER_SPACING; // Leave room for second ladder
+      bool broken = (rand() % 2) ? true : false;
 
-    //Add ladder between 4 & 5 and 4 & 6
-    int first_max = MAX_LADDER_X - LADDER_SPACING;  // Leave room for second ladder
+      // First ladder
+      int first_x = MIN_LADDER_X + (rand() % (first_max - MIN_LADDER_X));
+      ladders[ladder_index++] = (Ladder){
+          .x = first_x,
+          .width = LADDER_WIDTH,
+          .rung_space = 8,
+          .is_broken = broken,
+          .color = ST7789_YELLOW,
+          .lower_platform = i,
+          .upper_platform = i + 1};
+
+      // Second ladder - must be at least LADDER_SPACING pixels away from first
+      int second_min = first_x + LADDER_SPACING;
+      int second_max = MAX_LADDER_X;
+      if (second_min < MAX_LADDER_X)
+      {
+         int second_x = second_min + (rand() % (second_max - second_min));
+         if (second_x > MAX_LADDER_X)
+            second_x = MAX_LADDER_X - LADDER_WIDTH;
+
+         ladders[ladder_index++] = (Ladder){
+             .x = second_x,
+             .width = LADDER_WIDTH,
+             .rung_space = 8,
+             .is_broken = !broken,
+             .color = ST7789_YELLOW,
+             .lower_platform = i,
+             .upper_platform = i + 1};
+      }
+   }
+
+   // Add ladder between 4 & 5 and 4 & 6
+   int first_max = MAX_LADDER_X - LADDER_SPACING; // Leave room for second ladder
    bool broken = (rand() % 2) ? true : false;
 
    // First ladder
-   int first_x = MIN_LADDER_X + (rand() % (first_max - MIN_LADDER_X));
-   ladders[ladder_index++] = (Ladder){
-      .x = first_x,
-      .width = LADDER_WIDTH,
-      .rung_space = 8,
-      .is_broken = broken,
-      .color = ST7789_YELLOW,
-      .lower_platform = 4,
-      .upper_platform = 6
-   };
-   
-   // Second ladder - must be at least LADDER_SPACING pixels away from first
-   int second_min = first_x + LADDER_SPACING;
-   int second_max = MAX_LADDER_X;
-   if (second_min < MAX_LADDER_X) {
-      int second_x = second_min + (rand() % (second_max - second_min));
-      if (second_x > MAX_LADDER_X) second_x = MAX_LADDER_X - LADDER_WIDTH;
-      
-      ladders[ladder_index++] = (Ladder){
-            .x = second_x,
-            .width = LADDER_WIDTH,
-            .rung_space = 8,
-            .is_broken = !broken,
-            .color = ST7789_YELLOW,
-            .lower_platform = 4,
-            .upper_platform = 5
-      };
-   }
+   ladders[ladder_index++] = (Ladder){100, 140, 170, 4, 5, LADDER_WIDTH, 8, broken, ST7789_YELLOW};
 
-    
-    // Add the final ladder from DK's platform to princess platform
-    ladders[ladder_index] = (Ladder){90, 170, 200, 6, 7, LADDER_WIDTH, 8, false, ST7789_YELLOW};
+   // Second ladder - must be at least LADDER_SPACING pixels away from first
+   ladders[ladder_index++] = (Ladder){X_MAX - 80, 140, 170, 4, 5, LADDER_WIDTH, 8, false, ST7789_YELLOW};
+
+   // Add the final ladder from DK's platform to princess platform
+   ladders[ladder_index] = (Ladder){90, 170, 200, 6, 7, LADDER_WIDTH, 8, false, ST7789_YELLOW};
 }
 /*********************************Helper Functions**********************************/
 
@@ -1108,7 +1088,7 @@ void Read_Buttons()
       {
          if (buttons == SW1 || buttons == SW2 || buttons == SW3 || buttons == SW4)
          {
-            if(level == 3)
+            if (level == 3)
             {
                if (score > high_score)
                {
@@ -1119,8 +1099,8 @@ void Read_Buttons()
             }
             else
             {
-            transition = 1;
-            currentState = GAMEPLAY;
+               transition = 1;
+               currentState = GAMEPLAY;
             }
          }
       }
@@ -1234,7 +1214,7 @@ void Draw_Screen(void)
       {
          initLadders();
          draw_static_elements = true;
-         
+
          G8RTOS_WaitSemaphore(&sem_SPIA);
          ST7789_WriteString(10, 20, "SCORE ", ST7789_WHITE);
          G8RTOS_SignalSemaphore(&sem_SPIA);
@@ -1291,14 +1271,16 @@ void Draw_Screen(void)
       ST7789_WriteString(X_MAX / 2 - 25, string_y, "LEVEL WON!", ST7789_WHITE);
       G8RTOS_SignalSemaphore(&sem_SPIA);
 
-      if(level < 3){
+      if (level < 3)
+      {
          win = 0;
          G8RTOS_WaitSemaphore(&sem_SPIA);
          ST7789_WriteString(X_MAX / 2 - 90, string_y + 22, "PRESS ANY SW TO CONTINUE", ST7789_WHITE);
          G8RTOS_SignalSemaphore(&sem_SPIA);
       }
-      else{
-          G8RTOS_WaitSemaphore(&sem_SPIA);
+      else
+      {
+         G8RTOS_WaitSemaphore(&sem_SPIA);
          ST7789_WriteString(X_MAX / 2 - 50, string_y + 22, "FINAL SCORE ", ST7789_WHITE);
          G8RTOS_SignalSemaphore(&sem_SPIA);
 
@@ -1339,7 +1321,7 @@ void Generate_Barrel(void)
    {
       if (active_barrel_count < MAX_BARRELS && currentState == GAMEPLAY)
       {
-         for (int i = 0; i < MAX_BARRELS; i++)
+         for (int i = 0; i < max_barrels_level[level]; i++)
          {
             if (barrels[i].active == 0)
             {
@@ -1386,34 +1368,40 @@ void GPIOE_Handler()
    G8RTOS_SignalSemaphore(&sem_PCA9555_Debounce);
 }
 
-void UART4_Handler() {
-    uint32_t status = UARTIntStatus(UART4_BASE, true);
-    
-    // Read single byte/note from UART
-    if(UARTCharsAvail(UART4_BASE)) {
-        current_note = UARTCharGet(UART4_BASE);
+void UART4_Handler()
+{
+   uint32_t status = UARTIntStatus(UART4_BASE, true);
 
-        // Convert 8-bit unsigned (0-255) to signed (-128 to 127)
-        int16_t signed_sample = current_note - 128;
+   // Read single byte/note from UART
+   if (UARTCharsAvail(UART4_BASE))
+   {
+      current_note = UARTCharGet(UART4_BASE);
 
-        // Scale signed value to 12-bit DAC range and center around midpoint
-        uint32_t output;
-        if (signed_sample >= 0) {
-            output = 2048 + ((signed_sample * 2047) / 127);
-        } else {
-            output = 2048 + ((signed_sample * 2048) / 128);
-        }
+      // Convert 8-bit unsigned (0-255) to signed (-128 to 127)
+      int16_t signed_sample = current_note - 128;
 
-        // Apply volume scaling if needed
-        output = (output * current_volume) >> 12;
+      // Scale signed value to 12-bit DAC range and center around midpoint
+      uint32_t output;
+      if (signed_sample >= 0)
+      {
+         output = 2048 + ((signed_sample * 2047) / 127);
+      }
+      else
+      {
+         output = 2048 + ((signed_sample * 2048) / 128);
+      }
 
-        // Ensure output stays within DAC range
-        if (output > 4095) output = 4095;
+      // Apply volume scaling if needed
+      output = (output * current_volume) >> 12;
 
-        MutimodDAC_Write(DAC_OUT_REG, output);
-    }
-    
-    //UARTprintf("current note: %d", current_note);
+      // Ensure output stays within DAC range
+      if (output > 4095)
+         output = 4095;
 
-    UARTIntClear(UART4_BASE, status);
+      MutimodDAC_Write(DAC_OUT_REG, output);
+   }
+
+   // UARTprintf("current note: %d", current_note);
+
+   UARTIntClear(UART4_BASE, status);
 }
